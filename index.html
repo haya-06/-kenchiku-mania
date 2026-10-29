@@ -1,161 +1,643 @@
 <!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>ARCHITECTURE MANIA! REAL BUILD</title>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>建築マニア！リアル住宅完成版｜REAL 3D v41</title>
 <style>
-:root{--ink:#102238;--blue:#0c3f78;--gold:#ffc928;--red:#ef4a31}
-*{box-sizing:border-box}
-html,body{margin:0;background:#071522;color:white;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;overflow:hidden}
-body{touch-action:none}
-#app{height:100dvh;display:grid;place-items:center;background:radial-gradient(circle at 50% 0,#4e88bd,#071522 72%)}
-#game{position:relative;width:min(100vw,177.78dvh);height:min(100dvh,56.25vw);overflow:hidden;background:#9ed4f3;border:3px solid #19334e;box-shadow:0 0 0 5px #e8bd50,0 18px 70px #0008}
-canvas{display:block;width:100%;height:100%;cursor:crosshair}
-.hud{position:absolute;left:1.2%;right:1.2%;top:1.2%;display:flex;gap:8px;justify-content:space-between;pointer-events:auto;font-weight:900;text-shadow:0 2px 2px #0008}
-.pill{background:linear-gradient(#173b61,#0b2038);border:2px solid #e6c15a;border-radius:10px;padding:7px 12px;min-width:110px;box-shadow:0 3px 0 #0005}
-.pill small{display:block;font-size:10px;color:#b9d8ef}.pill b{font-size:23px;color:#ffe36a}
-#stageName{min-width:220px;text-align:center}
-#message{position:absolute;inset:0;display:grid;place-items:center;pointer-events:auto}
-#message .panel{pointer-events:auto;position:relative;z-index:10;background:#09243ddd;border:3px solid #f4ce62;border-radius:18px;padding:22px 34px;text-align:center;box-shadow:0 10px 30px #0008}
-#message h1{margin:0 0 8px;font-size:clamp(24px,4vw,58px);color:#ffe06a;text-shadow:3px 3px #13283e}
-#message p{margin:5px 0;font-size:clamp(13px,1.5vw,22px)}
-button{position:relative;z-index:20;pointer-events:auto;border:0;border-radius:12px;padding:13px 28px;margin:8px;font-size:18px;font-weight:900;cursor:pointer;color:#14263b;background:linear-gradient(#ffe36c,#edaa1b);box-shadow:0 4px 0 #9b6411}
-button.secondary{background:linear-gradient(#62b5ff,#2364bc);color:white}
-.hidden{display:none!important}
-#hint{position:absolute;bottom:1.5%;left:50%;transform:translateX(-50%);background:#071b2ccc;border:1px solid #ffffff55;border-radius:999px;padding:6px 15px;font-size:12px;pointer-events:auto}
-@media(max-width:650px){.pill{min-width:70px;padding:4px 6px}.pill b{font-size:16px}.pill small{font-size:8px}#stageName{min-width:90px}.hint{font-size:10px}}
-</style>
-</head>
-<body>
-<div id="app">
-<div id="game">
-<canvas id="cv" width="1280" height="720"></canvas>
-<div class="hud">
-  <div class="pill"><small>のこり時間</small><b id="time">12.0</b><small>SEC</small></div>
-  <div class="pill" id="stageName"><small>STAGE</small><b id="stage">1 / 4</b></div>
-  <div class="pill"><small>スコア</small><b id="score">00000</b></div>
-  <div class="pill"><small>建築進行</small><b id="build">0%</b></div><div class="pill"><small>コントローラー</small><b id="pad">未接続</b></div>
-</div>
-<div id="message">
-  <div class="panel">
-    <h1 id="title">ARCHITECTURE MANIA!</h1>
-    <p id="desc">動く的を狙って、未来の家を完成させよう！</p>
-    <button id="start">ゲームスタート</button>
-    <button class="secondary" id="how">あそびかた</button>
-  </div>
-</div>
-<div id="hint">クリック / タップで発射　｜　Joy-Con：スティックで照準・A/Bボタンで発射</div>
-</div>
-</div>
-<script>
-const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
-const W=cv.width,H=cv.height;
-const $=id=>document.getElementById(id);
-const stages=[
- {name:'基礎工事ステージ',sub:'正しい場所を狙って、基礎をつくろう！',sky:'#8ec8ed',ground:'#a7774e',rate:520,speed:1.0,goal:12},
- {name:'柱・梁ステージ',sub:'柱や梁を狙って、建物を組み上げよう！',sky:'#76b6df',ground:'#a67b55',rate:450,speed:1.25,goal:15},
- {name:'内装ステージ',sub:'家具や照明を狙って、部屋をコーディネート！',sky:'#d6b58b',ground:'#8d6c52',rate:390,speed:1.55,goal:17},
- {name:'建築現場ハチャメチャステージ',sub:'動きの速い的を狙って高得点を目指せ！',sky:'#72b2dc',ground:'#75634e',rate:300,speed:1.9,goal:20}
-];
-let running=false,stageIndex=0,score=0,stageScore=0,timeLeft=12,targets=[],particles=[],last=0,spawnClock=0,shots=0,hits=0,build=0,mouse={x:W/2,y:H/2},stageEnd=false;
-const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-function resizePointer(e){const r=cv.getBoundingClientRect();mouse.x=(e.clientX-r.left)/r.width*W;mouse.y=(e.clientY-r.top)/r.height*H}
-cv.addEventListener('pointermove',resizePointer);
-cv.addEventListener('pointerdown',e=>{if(!running)return;resizePointer(e);shoot()});
-$('start').onclick=()=>{startGame()};
-$('how').onclick=()=>{ $('title').textContent='あそびかた';$('desc').innerHTML='的は次々に出現します。赤い中心をクリック／タップ！<br>各ステージ12秒。後半ほど速く、小さくなります。';$('start').textContent='スタート';$('how').classList.add('hidden')};
-let activePad=null, padCooldown=0, lastPadFire=false;
-function pollGamepad(dt){
- const pads=navigator.getGamepads?navigator.getGamepads():[]; activePad=null;
- for(const p of pads){if(p){activePad=p;break}}
- $('pad').textContent=activePad?'接続中':'未接続'; if(!activePad)return;
- const ax=activePad.axes?.[0]||0, ay=activePad.axes?.[1]||0, dead=.18;
- if(Math.abs(ax)>dead)mouse.x=clamp(mouse.x+ax*dt*720,25,W-25);
- if(Math.abs(ay)>dead)mouse.y=clamp(mouse.y+ay*dt*520,145,H-25);
- padCooldown=Math.max(0,padCooldown-dt);
- const b=activePad.buttons||[], fire=!!(b[0]?.pressed||b[1]?.pressed);
- if(fire&&!lastPadFire&&padCooldown<=0){shoot();padCooldown=.16} lastPadFire=fire;
-}
-window.addEventListener('gamepadconnected',()=>{$('pad').textContent='接続中'});
-window.addEventListener('gamepaddisconnected',()=>{$('pad').textContent='未接続';activePad=null});
-const keys={};
-window.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase()))e.preventDefault()});
-window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
-const basePollGamepad=pollGamepad;
-pollGamepad=function(dt){
- basePollGamepad(dt); const speed=520;
- if(keys['arrowleft']||keys['a'])mouse.x=clamp(mouse.x-speed*dt,25,W-25);
- if(keys['arrowright']||keys['d'])mouse.x=clamp(mouse.x+speed*dt,25,W-25);
- if(keys['arrowup']||keys['w'])mouse.y=clamp(mouse.y-speed*dt,145,H-25);
- if(keys['arrowdown']||keys['s'])mouse.y=clamp(mouse.y+speed*dt,145,H-25);
- if(keys[' ']&&padCooldown<=0){shoot();padCooldown=.16}
-};
+:root{--gold:#ffc94b;--glass:rgba(7,18,29,.78)}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101923;color:#fff;font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;touch-action:none}#game{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}.shade{position:fixed;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(3,12,22,.5),transparent 25%,transparent 67%,rgba(2,8,14,.62));z-index:2}.hud{position:fixed;z-index:4;top:14px;left:14px;right:14px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;pointer-events:none}.panel{background:var(--glass);border:1px solid rgba(255,255,255,.18);box-shadow:0 8px 30px #0005;backdrop-filter:blur(10px);border-radius:14px;padding:10px 14px}.brand{font-size:clamp(14px,2vw,24px);font-weight:950;letter-spacing:.05em}.brand span{color:var(--gold)}#siteStage{display:inline-block;margin-top:5px;padding:4px 8px;border-radius:7px;background:#f3b632;color:#17212b;font-size:10px;font-weight:1000;letter-spacing:.06em}.stats{display:flex;gap:8px}.stat{min-width:78px;text-align:center}.stat small{display:block;color:#b9c7d4;font-size:10px;letter-spacing:.14em}.stat strong{display:block;font-size:clamp(20px,3vw,32px);line-height:1.2;font-variant-numeric:tabular-nums}.stat.time strong{color:var(--gold)}#stageBanner{position:fixed;z-index:6;left:50%;top:22%;transform:translate(-50%,-12px) scale(.94);opacity:0;pointer-events:none;min-width:min(440px,88vw);padding:15px 24px;text-align:center;border:1px solid #ffe6a2;border-radius:16px;background:linear-gradient(120deg,rgba(7,20,32,.94),rgba(22,57,72,.94));box-shadow:0 12px 42px #0008,0 0 24px #f4b83d33;transition:opacity .22s,transform .22s}#stageBanner.show{opacity:1;transform:translate(-50%,0) scale(1)}#stageBanner strong{display:block;color:#ffe08a;font-size:clamp(18px,3vw,28px);letter-spacing:.06em}#stageBanner small{display:block;margin-top:5px;color:#e2edf5;font-size:12px}#buildToast{position:fixed;z-index:4;left:50%;top:145px;transform:translate(-50%,-8px) scale(.9);opacity:0;background:#f2b83d;color:#17212b;border:2px solid #fff3b1;border-radius:12px;padding:9px 16px;font-weight:1000;letter-spacing:.04em;pointer-events:none;box-shadow:0 8px 28px #0007;transition:opacity .18s,transform .18s}#buildToast.show{opacity:1;transform:translate(-50%,0) scale(1)}#partName{position:fixed;z-index:4;top:90px;left:50%;transform:translateX(-50%);background:#101c2cce;border:1px solid #ffffff33;border-radius:999px;padding:8px 18px;font-weight:800;letter-spacing:.08em;pointer-events:none;white-space:nowrap}#crosshair{position:fixed;z-index:3;left:50%;top:52%;width:54px;height:54px;transform:translate(-50%,-50%);pointer-events:none;filter:drop-shadow(0 0 8px #000)}#crosshair:before,#crosshair:after{content:"";position:absolute;background:#ffe17a;box-shadow:0 0 5px #ffb52e}#crosshair:before{width:2px;height:54px;left:26px;top:0}#crosshair:after{height:2px;width:54px;top:26px;left:0}.ring{position:absolute;inset:9px;border:2px solid #ffe17a;border-radius:50%}#crosshair.hit{transform:translate(-50%,-50%) scale(1.3);filter:drop-shadow(0 0 12px #ffbc34)}#crosshair.hit:before,#crosshair.hit:after{background:#fff}#bottom{position:fixed;z-index:4;left:14px;right:14px;bottom:14px;display:flex;justify-content:space-between;align-items:end;gap:12px;pointer-events:none}.tip{font-size:clamp(11px,1.2vw,14px);color:#e6edf4;max-width:55%;line-height:1.55}.tip b{color:var(--gold)}.progress{display:flex;gap:5px;margin-top:6px}.pbit{height:5px;width:clamp(18px,3vw,38px);border-radius:5px;background:#ffffff26}.pbit.on{background:var(--gold);box-shadow:0 0 8px #ffbf40}.action{pointer-events:auto;border:0;border-radius:999px;background:linear-gradient(135deg,#ffe38b,#f5a81d);color:#1b2026;font-weight:950;font-size:16px;padding:14px 24px;box-shadow:0 7px 0 #9a5a0b,0 12px 25px #0005;cursor:pointer;touch-action:manipulation}.action:active{transform:translateY(3px);box-shadow:0 4px 0 #9a5a0b}.overlay{position:fixed;z-index:8;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:radial-gradient(ellipse at center,rgba(23,43,60,.72),rgba(4,10,17,.91));}.card{width:min(760px,96vw);max-height:94vh;overflow:auto;text-align:center;padding:clamp(22px,4vw,42px);border-radius:24px;background:linear-gradient(145deg,#172a3bfa,#09121df5);border:1px solid #ffffff2a;box-shadow:0 25px 90px #0009}.eyebrow{color:var(--gold);font-size:12px;font-weight:900;letter-spacing:.24em}.card h1{font-size:clamp(32px,6vw,62px);line-height:1.03;margin:12px 0 8px;font-weight:1000;letter-spacing:-.04em}.card h1 em{font-style:normal;color:var(--gold)}.card p{color:#cfdae5;line-height:1.75}.features{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:22px 0}.feature{padding:12px 5px;background:#ffffff0b;border:1px solid #ffffff15;border-radius:12px}.feature b{display:block;color:#fff;font-size:13px}.feature small{color:#9eb0c2;font-size:10px}.overlay .action{margin-top:8px;min-width:200px}.hidden{display:none!important}#finalHouseView{width:100%;height:clamp(220px,36vh,340px);border:1px solid #ffffff35;border-radius:14px;overflow:hidden;background:linear-gradient(#9bb4c3,#5b625f);margin:14px 0;position:relative}#finalHouseView canvas{width:100%!important;height:100%!important;display:block;cursor:grab;touch-action:none}#finalHouseView.dragging canvas{cursor:grabbing}#finalHouseView:after{content:"ドラッグして回転 ・ ホイール／ピンチ操作でズーム";position:absolute;left:8px;right:8px;bottom:7px;width:max-content;max-width:calc(100% - 16px);margin:auto;padding:5px 9px;border-radius:8px;background:#07121dc9;color:#fff;font-size:10px;font-weight:800;pointer-events:none;text-shadow:0 1px 3px #000}#buildQuality{margin:12px auto 16px;max-width:560px;text-align:left;background:#ffffff0b;border:1px solid #ffffff20;border-radius:12px;padding:12px 14px}#qualityHead{display:flex;justify-content:space-between;gap:10px;font-weight:900;font-size:13px;margin-bottom:8px}#qualityValue{color:var(--gold);font-size:18px}#qualityTrack{height:10px;background:#ffffff18;border-radius:99px;overflow:hidden}#qualityFill{height:100%;width:0;background:linear-gradient(90deg,#ef9d32,#ffe17a,#54d6a3);border-radius:99px;transition:width .65s ease}#qualityDetail{margin-top:8px;color:#c9d6e2;font-size:11px;line-height:1.5}#resultParts{display:flex;flex-wrap:wrap;justify-content:center;gap:7px;margin:16px 0}.chip{border:1px solid #ffffff2a;border-radius:9px;padding:7px 10px;font-size:12px;background:#ffffff0a}.chip b{color:var(--gold)}#housePreview{position:fixed;z-index:4;right:14px;top:112px;width:clamp(150px,23vw,280px);height:clamp(130px,20vw,210px);border:1px solid #ffffff55;border-radius:14px;overflow:hidden;background:linear-gradient(#8fa9ba,#303b40);box-shadow:0 10px 28px #0008;pointer-events:none}#housePreview canvas{width:100%;height:100%;display:block}#previewLabel{position:absolute;z-index:2;left:8px;top:7px;padding:4px 7px;border-radius:6px;background:#091522c9;font-size:10px;font-weight:900;letter-spacing:.08em}#previewParts{position:absolute;z-index:2;left:8px;right:8px;bottom:6px;font-size:10px;color:#fff;text-shadow:0 1px 3px #000;background:#07121db8;border-radius:6px;padding:4px 6px;text-align:center}.score-pop{position:fixed;z-index:7;pointer-events:none;font-weight:1000;font-size:clamp(18px,2.6vw,30px);color:#fff2a6;text-shadow:0 3px 0 #8a4c00,0 0 14px #ffb52b;transform:translate(-50%,-50%);animation:scorePop .75s ease-out forwards;white-space:nowrap}@keyframes scorePop{0%{opacity:0;transform:translate(-50%,-20%) scale(.65)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}100%{opacity:0;transform:translate(-50%,-150%) scale(.9)}}#flash{position:fixed;z-index:5;inset:0;pointer-events:none;background:#fff;opacity:0}#flash.boom{animation:flash .18s ease-out}#game.shake{animation:screenShake .16s linear}@keyframes screenShake{0%,100%{transform:translate(0,0)}25%{transform:translate(-3px,2px)}50%{transform:translate(3px,-2px)}75%{transform:translate(-2px,-1px)}}@keyframes flash{0%{opacity:.5}100%{opacity:0}}#controllerStatus{position:fixed;z-index:7;left:50%;bottom:76px;transform:translateX(-50%);padding:7px 12px;border:1px solid #ffffff2b;border-radius:999px;background:rgba(7,18,29,.82);color:#e9f2fa;font-size:11px;font-weight:850;letter-spacing:.02em;pointer-events:none;white-space:nowrap;box-shadow:0 5px 18px #0004}#controllerStatus.connected{border-color:#62d7a0aa;color:#b8ffda}#challengeHud{position:fixed;z-index:4;left:14px;top:116px;width:clamp(175px,20vw,240px);padding:9px 11px;border:1px solid #ffffff28;border-radius:11px;background:rgba(7,18,29,.78);box-shadow:0 6px 20px #0004;pointer-events:none;backdrop-filter:blur(8px)}.challengeHead,.challengeFoot{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:10px;font-weight:850}.challengeHead b{font-size:12px;color:var(--gold)}.challengeTrack{height:7px;background:#ffffff20;border-radius:99px;overflow:hidden;margin:6px 0}.challengeTrack>div{height:100%;width:0;background:linear-gradient(90deg,#e99b2e,#ffdf75,#4bd5a4);border-radius:99px;transition:width .2s}.challengeFoot{color:#d0dce6;font-size:10px}#liveAccuracy{color:#ffe08a}
+/* v34: cinematic result reveal + readable score count-up */
+/* v35: persistent nameless leaderboard and personal best */
+/* v38: more detailed final titles and slower target movement */
+/* v41: eased only house-part collection/build completion; target speed and scoring unchanged */
+/* v41: eased only house-part collection/build completion; target speed and scoring unchanged */
+/* v36: show current rank, personal-best celebration, and reliable saved-state feedback */
+/* v37: iPadOS Joy-Con/gamepad support, menu controls, D-pad fallback and connection status */
+#result:not(.hidden){animation:resultFadeIn .55s ease-out both}
+#result:not(.hidden) .card{animation:resultCardIn .7s cubic-bezier(.2,.8,.2,1) both;border-color:#ffe08a66;box-shadow:0 25px 90px #000b,0 0 34px #ffc94b20}
+#finalHouseView{box-shadow:inset 0 0 32px #fff2,0 0 0 1px #ffe08a22;animation:houseRevealGlow 2.8s ease-in-out infinite alternate}
+#finalScore{display:inline-block;padding:3px 16px;border-radius:14px;background:linear-gradient(90deg,#ffffff05,#ffc94b18,#ffffff05);text-shadow:0 0 22px #ffc94b66;animation:scoreReveal .7s .25s both}
+#resultTitle{ text-shadow:0 0 22px #ffc94b35 }
+.result-confetti{position:absolute;top:-14px;width:8px;height:15px;border-radius:2px;pointer-events:none;z-index:9;animation:confettiDrop var(--dur,2.2s) cubic-bezier(.2,.65,.35,1) forwards;transform:rotate(var(--rot,0deg));}
+@keyframes resultFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes resultCardIn{0%{opacity:0;transform:translateY(24px) scale(.97)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes houseRevealGlow{from{box-shadow:inset 0 0 20px #fff1,0 0 0 1px #ffe08a12}to{box-shadow:inset 0 0 38px #fff2,0 0 22px #ffc94b20}}
+@keyframes scoreReveal{from{opacity:0;transform:translateY(12px) scale(.88)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes confettiDrop{0%{opacity:0;transform:translate3d(0,-10px,0) rotate(var(--rot,0deg))}12%{opacity:1}100%{opacity:0;transform:translate3d(var(--drift,30px),105vh,0) rotate(760deg)}}
 
-function startGame(){stageIndex=0;score=0;build=0;startStage();$('message').classList.add('hidden')}
-function startStage(){running=true;stageScore=0;timeLeft=12;targets=[];particles=[];spawnClock=0;shots=0;hits=0;stageEnd=false;last=performance.now();$('stage').textContent=(stageIndex+1)+' / 4';$('stageName').querySelector('small').textContent=stages[stageIndex].name;$('time').textContent='12.0';$('score').textContent=String(score).padStart(5,'0');$('build').textContent=build+'%';requestAnimationFrame(loop)}
-function makeTarget(){const s=stages[stageIndex];let type=Math.random();let r=type<.22?22:rand(25,38);if(stageIndex>=2)r*=rand(.7,1);let side=Math.floor(rand(0,4));let x,y,vx,vy;
- if(side===0){x=rand(60,W-60);y=rand(145,220);vx=rand(-.8,.8)*s.speed;vy=rand(.5,1.2)*s.speed}
- if(side===1){x=rand(60,W-60);y=rand(450,650);vx=rand(-.8,.8)*s.speed;vy=-rand(.5,1.2)*s.speed}
- if(side===2){x=rand(45,180);y=rand(210,590);vx=rand(.8,1.7)*s.speed;vy=rand(-.6,.6)*s.speed}
- if(side===3){x=rand(W-180,W-45);y=rand(210,590);vx=-rand(.8,1.7)*s.speed;vy=rand(-.6,.6)*s.speed}
- targets.push({x,y,vx,vy,r,life:rand(2.0,3.4),age:0,phase:rand(0,6.28),value:Math.round(60+(42-r)*2+(stageIndex*25)),kind:Math.floor(rand(0,4))})}
-function shoot(){shots++;for(let i=targets.length-1;i>=0;i--){let t=targets[i],d=Math.hypot(mouse.x-t.x,mouse.y-t.y);if(d<t.r*1.15){hits++;score+=t.value;stageScore+=t.value;build=clamp(Math.floor(score/35),0,100);burst(t.x,t.y);targets.splice(i,1);return}}burst(mouse.x,mouse.y,true)}
-function burst(x,y,miss=false){for(let i=0;i<(miss?5:16);i++)particles.push({x,y,vx:rand(-3,3),vy:rand(-3,3),life:rand(.25,.6),c:miss?'#cfe9ff':'#ffe06a',size:rand(2,5)})}
-function update(dt){pollGamepad(dt);const s=stages[stageIndex];timeLeft-=dt;spawnClock+=dt*1000;
- let interval=s.rate*(stageIndex===3?rand(.7,1):1);
- if(spawnClock>interval){spawnClock=0;makeTarget();if(Math.random()<.24+stageIndex*.07)makeTarget()}
- for(let i=targets.length-1;i>=0;i--){let t=targets[i];t.age+=dt;t.x+=t.vx*dt*60;t.y+=t.vy*dt*60;t.phase+=dt*4;
-  if(t.x<30||t.x>W-30)t.vx*=-1;if(t.y<150||t.y>H-40)t.vy*=-1;
-  if(t.age>t.life){targets.splice(i,1)}
+/* v35: persistent nameless leaderboard and personal best */
+/* v38: more detailed final titles and slower target movement */
+/* v41: eased only house-part collection/build completion; target speed and scoring unchanged */
+/* v41: eased only house-part collection/build completion; target speed and scoring unchanged */
+/* v36: show current rank, personal-best celebration, and reliable saved-state feedback */
+/* v37: iPadOS Joy-Con/gamepad support, menu controls, D-pad fallback and connection status */
+.record-board{margin:16px auto 18px;max-width:560px;text-align:left;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.17);border-radius:14px;overflow:hidden}
+.record-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;background:rgba(255,201,75,.10);border-bottom:1px solid rgba(255,255,255,.12)}
+.record-head strong{font-size:14px;color:#ffe08a}.record-best{font-size:12px;font-weight:900;color:#fff}.record-best b{font-size:20px;color:#ffc94b;margin-left:5px;font-variant-numeric:tabular-nums}
+.record-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}.record-table th,.record-table td{padding:7px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,.08)}.record-table th{font-size:10px;color:#aebdca;letter-spacing:.08em;font-weight:800}.record-table td:first-child{width:48px;font-weight:950;color:#ffe08a}.record-table td:nth-child(2){font-weight:950}.record-table td:last-child{text-align:right;color:#b9c8d5}.record-table tr:last-child td{border-bottom:0}.record-table tr.record-current td{background:rgba(255,201,75,.16);color:#fff1b5}.record-table tr.record-current td:first-child:after{content:" 今回";font-size:9px;color:#ffc94b}.record-status{max-width:560px;margin:10px auto;padding:10px 12px;border:1px solid #ffc94b55;border-radius:10px;background:linear-gradient(90deg,#ffc94b14,#ffffff06);color:#fff0bd;font-size:13px;font-weight:900}.record-status strong{color:#ffc94b;font-size:19px;margin:0 3px}.record-status small{display:block;margin-top:4px;color:#b9c8d5;font-size:10px;font-weight:600}.record-empty{padding:12px 14px;color:#b9c8d5;font-size:12px}.record-note{margin:0!important;padding:8px 12px;font-size:10px!important;color:#9eb0c2!important;border-top:1px solid rgba(255,255,255,.08)}
+@media(max-width:600px){.record-head{padding:9px 10px}.record-table th,.record-table td{padding:7px 9px}.record-best b{font-size:17px}}
+@media(max-width:600px){#challengeHud{top:105px;left:8px;width:158px;padding:7px 8px}.challengeHead,.challengeFoot{font-size:9px}#housePreview{top:116px;right:8px;width:140px;height:120px}#partName{left:38%;font-size:12px}.hud{top:8px;left:8px;right:8px}.panel{padding:8px}.stats{gap:4px}.stat{min-width:56px}#partName{top:75px}.tip{max-width:65%}#bottom{left:8px;right:8px;bottom:8px}.action{padding:12px 18px}.features{gap:5px}.feature{padding:9px 3px}}
+</style></head><body><div id="game"></div><div class="shade"></div><div class="hud"><div class="panel"><div class="brand">建築マニア！ <span>REAL 3D v41</span></div><div id="stageLabel" style="font-size:11px;font-weight:900;color:#ffd56c;margin-top:5px">STAGE 1｜基礎工事</div><div id="siteStage">現場 1｜着工</div><div class="progress" id="progress"></div></div><div class="stats"><div class="panel stat"><small>SCORE</small><strong id="score">00000</strong></div><div class="panel stat"><small>COMBO</small><strong id="combo">×0</strong></div><div class="panel stat"><small>MISS</small><strong id="miss">0</strong></div><div class="panel stat time"><small>TIME</small><strong id="time">40</strong></div></div></div><div id="housePreview"><div id="previewLabel">🏠 建築進捗 3D</div><div id="previewParts">部材を集めて少しずつ建築</div></div><div id="partName">部材を狙え！</div><div id="challengeHud"><div class="challengeHead"><span>🎯 10,000点チャレンジ</span><b id="challengePercent">0%</b></div><div class="challengeTrack"><div id="challengeFill"></div></div><div class="challengeFoot"><span id="liveAccuracy">命中率 0%</span><span id="liveHits">命中 0 / 0</span></div></div><div id="stageBanner"><strong id="stageBannerTitle">工事進行！</strong><small id="stageBannerSub">現場の状況が変化しました</small></div><div id="buildToast">🏗️ 住宅を組み立て中</div><div id="crosshair"><div class="ring"></div></div><div id="bottom"><div class="panel tip">照準を合わせてタップ／クリック／コントローラーで射撃<br><b>40秒勝負！的の中心命中で＋90点！命中率80％で1万点を目指せ！的を逃すと−40点、空撃ちは−10点</b></div><button class="action" id="fireBtn">FIRE　●</button></div><div id="flash"></div><div id="controllerStatus" aria-live="polite">🎮 Joy-Con／コントローラー接続待ち</div>
+<div class="overlay" id="start"><div class="card"><div class="eyebrow">CONSTRUCTION SITE SHOOTING</div><h1>建築マニア！<br><em>REAL 3D v41</em></h1><p>外壁のサイディング・窓台・軒先・棟包み・雨樋を追加し、住宅の仕上がりを強化。終了時は完成度に応じて視点が自動調整されます。<br>中心を正確に狙ってボーナス得点を獲得し、部材を複数集めて住宅を組み上げよう！住宅の部材を少し集めやすく調整し、家が建ちやすくなりました！</p><div class="features"><div class="feature"><b>立体3D現場</b><small>遠近感・影・光</small></div><div class="feature"><b>3段階フェーズ</b><small>基礎→躯体→仕上げ</small></div><div class="feature"><b>部材を組み立てる</b><small>種類ごとの形で飛び込む</small></div></div><p style="font-size:12px">iPadのBluetooth設定でJoy-Conを接続できます。左スティック／十字キーで照準、A・B・X・Y・ZRなどで射撃。メニューではボタンを押すと開始・再プレイできます。<br>※iPadOS 16以降推奨。Safariのゲームパッド対応はコントローラーやOSの組み合わせで異なります。3D描画にはインターネット接続が必要です。</p><div class="record-board" id="startRecords" aria-live="polite"></div><button class="action" id="startBtn">ゲームスタート ▶</button></div></div>
+<div class="overlay hidden" id="result"><div class="card"><div class="eyebrow">CONSTRUCTION COMPLETE · v41 JOY-CON READY</div><h1 id="resultTitle">住宅完成！</h1><p id="resultText"></p><div id="finalHouseView"><div style="padding:70px 10px;color:#fff">完成した住宅をここに表示します</div></div><div id="resultParts"></div><div id="finalScore" style="font-size:clamp(28px,5vw,48px);font-weight:1000;color:var(--gold)">SCORE 00000</div><p id="resultStats" style="font-size:13px;font-weight:800;color:#dce8f2">命中率 --%　｜　命中 0 / 0</p><div id="buildQuality"><div id="qualityHead"><span>🏗️ 住宅の建築完成度</span><span id="qualityValue">0%</span></div><div id="qualityTrack"><div id="qualityFill"></div></div><div id="qualityDetail">基礎・躯体・壁・開口部・屋根のバランスを判定します。</div></div><p style="font-size:12px">獲得部材を反映した住宅を自動回転で確認できます。ドラッグで自由に回転、ホイール／2本指ピンチで拡大縮小。部材の不足箇所は未完成のまま残ります。</p><div class="record-status" id="recordStatus" aria-live="polite">今回のランキングを集計します…</div><div class="record-board" id="resultRecords" aria-live="polite"></div><button class="action" id="againBtn">もう一度プレイ ↻</button></div></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script><script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);const host=$('game');let renderer,scene,camera,clock,raf=0,mode='ready',score=0,combo=0,time=40,lastSpawn=0,spawnGap=.95,aimX=0,aimY=0,targets=[],particles=[],counts={},gameStart=0,prev=0,houseGroup=null,gamepadLast=false,gamepadMenuLast=false,mouseDown=false,previewRenderer,previewScene,previewCamera,previewHouse=null,previewClock=0,shots=0,hitCount=0,missCount=0,previewPulse=0,previewReveal=0,connectedPads=0,stageNow=1,siteStage2=null,siteStage3=null,siteSun=null,siteHemisphere=null,siteKeyLight=null,siteRimLight=null,siteHoist=null,siteCargo=null,siteCable=null,siteCableBaseLength=1,siteAccentLights=[],siteFlags=[],siteFrame=null,buildFx=[],mainBuildFx=[],stageBannerTimer=0,siteHitPulse=0,lastStageAnnounced=1,audioCtx=null,resultBuildPct=0,resultCameraBlend=0,resultCamStart=null,resultDrag=false,resultLastX=0,resultLastY=0,resultTilt=0,resultZoom=1,resultManualUntil=0;
+const TYPES=[{id:'foundation',name:'基礎',color:0x9ca7ad,points:120},{id:'column',name:'柱',color:0xc58b4b,points:100},{id:'beam',name:'梁',color:0xe2b36e,points:110},{id:'wall',name:'壁',color:0xe7e0cf,points:130},{id:'window',name:'窓',color:0x4bb9d5,points:150},{id:'door',name:'ドア',color:0x855331,points:140},{id:'roof',name:'屋根',color:0x354b62,points:180},{id:'bonus',name:'金の安全ヘルメット',color:0xffcf35,points:350}];
+function mat(color,rough=.7,metal=0){return new THREE.MeshStandardMaterial({color,roughness:rough,metalness:metal})}
+function box(parent,x,y,z,w,h,d,m){let o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o}
+function cyl(parent,x,y,z,r1,r2,h,m,seg=12){let o=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,seg),m);o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o}
+function beamBetween(parent,a,b,r,m){let d=new THREE.Vector3().subVectors(b,a),o=cyl(parent,0,0,0,r,r,d.length(),m,8);o.position.copy(a).add(b).multiplyScalar(.5);o.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());return o}
+function addFestiveConstructionSite(){
+ // Bright, playful construction-site scenery placed around (not over) the aiming lane.
+ const skyBlue=mat(0x8ed8f5,.95),cloudMat=mat(0xf7fbff,.95),hillA=mat(0x7eaf78),hillB=mat(0x9ac77d),orange=mat(0xff8a24,.55),hiVis=mat(0xffc928,.5),navy=mat(0x244357),white=mat(0xf6f2df),red=mat(0xe84d3d),green=mat(0x39a96b),glass=mat(0x8fe3f5,.22,.12);
+ // Soft green hills along the horizon.
+ for(let i=0;i<7;i++){let h=4+((i*7)%4),x=-25+i*8.3;let hill=new THREE.Mesh(new THREE.SphereGeometry(1,18,12),i%2?hillA:hillB);hill.position.set(x,h*.2,-39-(i%3)*2);hill.scale.set(7,h,2.8);hill.receiveShadow=true;scene.add(hill)}
+ // Puffy clouds, kept high in the sky.
+ for(let i=0;i<6;i++){let g=new THREE.Group(),x=-21+i*8.2,y=10+(i%3)*1.5,z=-31-(i%2)*3;for(let j=0;j<4;j++){let puff=new THREE.Mesh(new THREE.SphereGeometry(1,14,10),cloudMat);puff.position.set((j-1.5)*.72,(j%2)*.28,0);puff.scale.set(1.15,.62,.42);g.add(puff)}g.position.set(x,y,z);g.scale.setScalar(.8+(i%3)*.13);scene.add(g)}
+ // A friendly construction notice board on each side of the action.
+ function sign(x,z,titleColor,accent){let g=new THREE.Group();g.position.set(x,0,z);scene.add(g);box(g,0,1.8,0,2.5,1.45,.18,navy);box(g,0,2.55,.12,2.5,.12,.08,accent);box(g,0,1.08,.12,2.25,.08,.08,accent);for(let sx of [-.85,.85])box(g,sx,.55,0,.13,1.1,.13,mat(0x65747b));box(g,-.52,1.98,.13,.25,.25,.06,titleColor);box(g,0,1.98,.13,.25,.25,.06,accent);box(g,.52,1.98,.13,.25,.25,.06,green);return g}
+ sign(-8.5,-7,hiVis,orange);sign(8.5,-7,green,hiVis);
+ // Small toy-like dump truck at the far right.
+ const truck=new THREE.Group();truck.position.set(8.2,.05,-11);truck.rotation.y=-.12;scene.add(truck);box(truck,0,.75,0,2.8,.75,1.25,orange);box(truck,-.2,1.28,0,1.15,.72,1.12,hiVis);box(truck,-.2,1.32,.58,.68,.42,.035,glass);box(truck,-.2,1.32,-.58,.68,.42,.035,glass);box(truck,1.05,1.05,0,1.1,.95,1.15,red);for(let x of [-.85,.85])for(let z of [-.66,.66]){cyl(truck,x,.34,z,.31,.31,.18,mat(0x29343a),14).rotation.x=Math.PI/2;cyl(truck,x,.34,z+(z>0?.1:-.1),.13,.13,.19,mat(0xcbd4d7),12).rotation.x=Math.PI/2}
+ // Friendly excavator on the far left with articulated boom and bucket.
+ const dig=new THREE.Group();dig.position.set(-8.1,.05,-10.5);dig.rotation.y=.25;scene.add(dig);box(dig,0,.38,0,2.4,.42,1.15,mat(0x343d42));for(let x of [-.7,.7]){let track=box(dig,x,.38,0,.8,.5,1.35,mat(0x343d42));track.material=mat(0x343d42)}box(dig,0,.95,0,1.65,.65,1.05,hiVis);box(dig,-.25,1.42,-.05,.9,.62,.9,orange);box(dig,-.25,1.48,.42,.52,.37,.05,glass);beamBetween(dig,new THREE.Vector3(.45,1.25,0),new THREE.Vector3(1.25,2.5,0),.19,hiVis);beamBetween(dig,new THREE.Vector3(1.25,2.5,0),new THREE.Vector3(2.05,1.55,0),.15,orange);beamBetween(dig,new THREE.Vector3(2.05,1.55,0),new THREE.Vector3(2.35,1.35,0),.13,mat(0x59656b));box(dig,2.38,1.22,0,.48,.22,.42,mat(0x59656b));
+ // Colorful safety cones around the edges of the work lane.
+ for(let x of [-6.1,-4.9,4.9,6.1]){let cone=new THREE.Mesh(new THREE.ConeGeometry(.28,.78,12),orange);cone.position.set(x,.39,1.2);cone.castShadow=true;scene.add(cone);cyl(scene,x,.09,1.2,.31,.31,.12,white,12)}
+ // Alternating red/yellow bunting across the upper background.
+ for(let i=0;i<13;i++){let x=-9+i*1.5,y=8.1+Math.sin(i/12*Math.PI)*.35;let flag=new THREE.Mesh(new THREE.ConeGeometry(.23,.48,3),i%2?orange:hiVis);flag.position.set(x,y,-12.5);flag.rotation.z=Math.PI;flag.rotation.y=Math.PI/2;scene.add(flag)}
+ // Small worker figures in bright PPE, positioned well outside the central targets.
+ function worker(x,z,turn){let g=new THREE.Group();g.position.set(x,0,z);g.rotation.y=turn;scene.add(g);cyl(g,0,1.05,0,.19,.22,.55,mat(0x31516a),10);box(g,0,1.45,0,.42,.48,.25,hiVis);box(g,-.25,1.37,0,.12,.45,.13,hiVis);box(g,.25,1.37,0,.12,.45,.13,hiVis);cyl(g,0,1.83,0,.16,.16,.28,mat(0xe2b48b),12);let helmet=new THREE.Mesh(new THREE.SphereGeometry(.21,14,8,0,Math.PI*2,0,Math.PI/2),hiVis);helmet.position.set(0,1.99,0);g.add(helmet);box(g,0,1.91,.13,.42,.07,.28,hiVis);for(let sx of [-.1,.1])box(g,sx,.48,0,.13,.55,.14,navy);return g}
+ worker(-7.2,-4.7,.12);worker(7.3,-4.9,-.12);
+ // A few tidy material pallets to make the site feel active.
+ for(let i=0;i<3;i++){let x=-7.5+i*.55;box(scene,x,.16,-2.4,.48,.18,1.2,mat(0x9a704a));box(scene,x,.34,-2.4,.48,.18,1.2,mat(i%2?0xd3a064:0xb9824c));}
+}
+function init(){if(!window.THREE){$('start').querySelector('p').innerHTML='3Dライブラリを読み込めません。インターネット接続を確認してページを再読み込みしてください。';return}scene=new THREE.Scene();scene.background=new THREE.Color(0x9eb7c9);scene.fog=new THREE.Fog(0x9eb7c9,25,85);camera=new THREE.PerspectiveCamera(53,innerWidth/innerHeight,.1,150);camera.position.set(0,5.7,15.5);camera.lookAt(0,2.8,-3);const mobileDevice=/iPad|iPhone|iPod|Android/i.test(navigator.userAgent);renderer=new THREE.WebGLRenderer({antialias:!mobileDevice,powerPreference:'low-power'});renderer.setPixelRatio(Math.min(devicePixelRatio||1,mobileDevice?1.15:1.45));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;host.appendChild(renderer.domElement);clock=new THREE.Clock();initHousePreview();
+siteHemisphere=new THREE.HemisphereLight(0xe7f3ff,0x544536,2.05);scene.add(siteHemisphere);siteSun=new THREE.DirectionalLight(0xffe0b1,3.1);siteSun.position.set(-10,18,8);siteSun.castShadow=true;siteSun.shadow.mapSize.set(1024,1024);siteSun.shadow.camera.left=-22;siteSun.shadow.camera.right=22;siteSun.shadow.camera.top=22;siteSun.shadow.camera.bottom=-22;scene.add(siteSun);
+// V32 cinematic fill/rim lighting: warm construction-site key light plus cool edge separation.
+siteKeyLight=new THREE.DirectionalLight(0xffc982,.72);siteKeyLight.position.set(8,8,7);scene.add(siteKeyLight);siteRimLight=new THREE.DirectionalLight(0x9bcfff,.58);siteRimLight.position.set(-7,6,-10);scene.add(siteRimLight);
+const ground=box(scene,0,-.38,-15,100,.5,100,mat(0x77786e));ground.receiveShadow=true;let grid=new THREE.GridHelper(100,70,0x525b5d,0x92938b);grid.position.y=-.11;scene.add(grid);
+// distant city silhouettes
+for(let i=0;i<18;i++){let x=(i-9)*5.5,z=-35-Math.random()*12,h=3+Math.random()*10;box(scene,x,h/2,z,2.8,h,2.8,mat(i%3?0x82939a:0x6e828b))}
+addFestiveConstructionSite();
+// Progressive set dressing: the construction site visibly develops during the 40-second round.
+siteStage2=new THREE.Group();siteStage3=new THREE.Group();scene.add(siteStage2,siteStage3);siteStage2.visible=false;siteStage3.visible=false;
+const steelStage=mat(0x6d7e86,.4,.38),timberStage=mat(0xb9854b),safetyStage=mat(0xf5bd2e,.48),meshStage=mat(0xd2d9d6,.82);
+// Stage 2: active construction — extra scaffold bays, cross-bracing, material racks and a moving hoist.
+for(const side of [-1,1]){const x=side*5.5;for(let z=-16;z<=-4;z+=3){cyl(siteStage2,x,3.1,z,.075,.075,6.2,steelStage,10);cyl(siteStage2,x+side*1.15,3.1,z,.075,.075,6.2,steelStage,10);for(let y=1.2;y<5.8;y+=1.5){beamBetween(siteStage2,new THREE.Vector3(x,y,z),new THREE.Vector3(x+side*1.15,y+1.1,z),.04,steelStage);beamBetween(siteStage2,new THREE.Vector3(x+side*1.15,y,z),new THREE.Vector3(x,y+1.1,z),.04,steelStage)}box(siteStage2,x+side*.57,2.5,z,1.25,.1,.38,meshStage)}}
+for(let i=0;i<4;i++){box(siteStage2,-7.3+i*.55,.95,-8,.46,.2,2.1,timberStage);box(siteStage2,-7.3+i*.55,1.18,-8,.46,.2,2.1,timberStage)}
+const hoist=new THREE.Group();siteHoist=hoist;hoist.position.set(4.8,0,-12);siteStage2.add(hoist);cyl(hoist,0,5.8,0,.07,.07,11.6,steelStage,10);beamBetween(hoist,new THREE.Vector3(0,11.4,0),new THREE.Vector3(-5,11.4,0),.12,safetyStage);beamBetween(hoist,new THREE.Vector3(0,11.4,0),new THREE.Vector3(1.4,11.4,0),.12,safetyStage);
+// Animated suspended material pallet: its cable is updated each frame so the load stays connected.
+siteCargo=new THREE.Group();siteCargo.position.set(-3.5,5.55,0);hoist.add(siteCargo);box(siteCargo,0,0,0,1.3,.52,1.05,mat(0x9ca5a7));box(siteCargo,0,-.29,0,1.42,.09,1.15,timberStage);for(let x of [-.48,.48])box(siteCargo,x,.31,0,.07,.15,.08,safetyStage);
+siteCable=beamBetween(hoist,new THREE.Vector3(-3.5,11.4,0),new THREE.Vector3(-3.5,5.88,0),.035,steelStage);siteCableBaseLength=siteCable.geometry.parameters.height;
+// Extra stage-2 construction detail: elevated work deck, warning lamps and concrete stacks.
+for(const side of [-1,1]){const x=side*7.6;box(siteStage2,x,2.35,-7.5,1.7,.16,3.2,steelStage);for(let z of [-8.8,-7.5,-6.2]){box(siteStage2,x,2.52,z,1.55,.12,.08,safetyStage)}for(let y of [1.2,2.6,4.0]){beamBetween(siteStage2,new THREE.Vector3(x-side*.8,y,-8.8),new THREE.Vector3(x+side*.8,y,-8.8),.045,steelStage)}}
+for(const x of [-6.8,6.8]){cyl(siteStage2,x,4.7,-5.8,.055,.055,9.4,steelStage,10);box(siteStage2,x,9.45,-5.8,.5,.24,.5,safetyStage);const lamp=new THREE.PointLight(0xffb84b,1.1,9);lamp.position.set(x,9.2,-5.8);siteStage2.add(lamp)}
+// Stage 3: finishing work — perimeter fence, neat planting, warm work lights and completion bunting.
+for(let x=-9;x<=9;x+=1.5){box(siteStage3,x,.65,3.8,1.38,1.25,.10,mat(0xe8e4d8));box(siteStage3,x,.65,3.72,.12,1.25,.06,safetyStage)}
+for(let x of [-8.4,-6.8,6.8,8.4]){cyl(siteStage3,x,.65,2.1,.08,.08,1.3,mat(0x6d777c));let shrub=new THREE.Mesh(new THREE.SphereGeometry(.52,12,9),mat(x<0?0x4d8c58:0x5d9c5d));shrub.position.set(x,1.05,2.1);shrub.scale.set(1.15,.8,1);siteStage3.add(shrub)}
+// Stage-3 finishing zone: illuminated gate, work lights, stacked finish materials and a completion sign.
+for(const x of [-9.2,9.2]){box(siteStage3,x,2.15,4.2,.18,4.3,.18,steelStage);box(siteStage3,x,4.32,4.2,.24,.18,.24,safetyStage);const lamp=new THREE.PointLight(0xffd49a,1.45,12);lamp.position.set(x,4.1,3.8);siteStage3.add(lamp);siteAccentLights.push(lamp);const glow=new THREE.Mesh(new THREE.SphereGeometry(.19,12,8),new THREE.MeshBasicMaterial({color:0xffd49a}));glow.position.set(x,4.05,3.95);siteStage3.add(glow)}
+box(siteStage3,0,2.5,4.25,4.3,1.25,.18,mat(0x164d48));box(siteStage3,0,3.15,4.36,4.05,.10,.04,safetyStage);for(let x=-1.65;x<=1.65;x+=.55)box(siteStage3,x,2.5,4.37,.045,.58,.04,mat(0xe8f3e8));
+for(let i=0;i<5;i++){const pallet=new THREE.Group();pallet.position.set(-7.4+i*.72,.05,1.2);siteStage3.add(pallet);box(pallet,0,.12,0,.62,.18,.82,timberStage);box(pallet,0,.32,0,.58,.18,.78,i%2?meshStage:mat(0xe2d7c5));box(pallet,0,.52,0,.54,.18,.74,i%2?mat(0xe2d7c5):meshStage)}
+for(let i=0;i<15;i++){let x=-8.5+i*1.22;let flag=new THREE.Mesh(new THREE.ConeGeometry(.18,.36,3),i%2?safetyStage:mat(0x4fb7a3));flag.position.set(x,7.3+Math.sin(i*.4)*.2,-7.8);flag.rotation.z=Math.PI;flag.rotation.y=Math.PI/2;siteStage3.add(flag);siteFlags.push(flag)}
+for(let x of [-7.8,7.8]){cyl(siteStage3,x,2.5,-1,.07,.09,5,steelStage,10);box(siteStage3,x,5.05,-1,.8,.32,.4,safetyStage);const lamp=new THREE.PointLight(0xffd59a,16,10);lamp.position.set(x,4.9,-1);siteStage3.add(lamp);siteAccentLights.push(lamp)}
+// construction scaffolding, poles, braces
+const steel=mat(0x697982,.42,.42),rust=mat(0x9b6538),wood=mat(0xb8834a),concrete=mat(0x999d9c),yellow=mat(0xf4bb2f,.45);for(let side of [-1,1]){let x=side*6.3;for(let z=-17;z<1;z+=3){cyl(scene,x,3.3,z,.09,.09,6.6,steel,10);cyl(scene,x+side*1.3,3.3,z,.08,.08,6.6,steel,10);for(let y=1.4;y<6;y+=1.7){beamBetween(scene,new THREE.Vector3(x,y,z),new THREE.Vector3(x+side*1.3,y+1.3,z),.045,steel);beamBetween(scene,new THREE.Vector3(x+side*1.3,y,z),new THREE.Vector3(x,y+1.3,z),.045,steel)}box(scene,x+side*.65,2.1,z,1.4,.12,.5,mat(0x9eaaae))}}
+// crane mast and boom
+for(let y=.6;y<12;y+=.8){beamBetween(scene,new THREE.Vector3(-10,y,-14),new THREE.Vector3(-9.1,y+.8,-14),.06,yellow);beamBetween(scene,new THREE.Vector3(-9.1,y,-14),new THREE.Vector3(-10,y+.8,-14),.06,yellow)}beamBetween(scene,new THREE.Vector3(-10,12,-14),new THREE.Vector3(3,12,-14),.13,yellow);beamBetween(scene,new THREE.Vector3(-10,12,-14),new THREE.Vector3(-10,13.5,-14),.11,yellow);beamBetween(scene,new THREE.Vector3(2,12,-14),new THREE.Vector3(2,8,-14),.035,steel);
+// lumber stacks and concrete blocks
+for(let i=0;i<5;i++){box(scene,-8+i*.5,.22,-5, .38,.42,3,wood);box(scene,-8+i*.5,.68,-5,.38,.42,3,wood)}for(let i=0;i<3;i++)box(scene,7,.4+i*.65,-8,2,.7,2,concrete);
+// main unfinished structure behind targets
+siteFrame=new THREE.Group();const frame=siteFrame;scene.add(frame);for(let x of [-3.3,0,3.3]){for(let z of [-6,-2])box(frame,x,2.4,z,.22,4.8,.22,wood)}for(let y of [2.1,4.5])for(let z of [-6,-2])box(frame,0,y,z,6.8,.24,.24,wood);for(let x of [-3.3,0,3.3])box(frame,x,4.7,-4, .2,.2,4.3,wood);for(let x of [-3.3,3.3])beamBetween(frame,new THREE.Vector3(x,4.9,-6),new THREE.Vector3(x,6.6,-4),.13,wood);for(let x of [-3.3,3.3])beamBetween(frame,new THREE.Vector3(x,6.6,-4),new THREE.Vector3(x,4.9,-2),.13,wood);
+// Keep the static demonstration frame hidden: the player-built house appears from collected parts.
+siteFrame.visible=false;
+// work lights
+for(let x of [-7,7]){let pole=cyl(scene,x,3,0,.09,.12,6,steel);let lamp=box(scene,x,5.8,0,.65,.28,.35,yellow);let l=new THREE.PointLight(0xffdca1,25,12);l.position.set(x,5.6,0);scene.add(l)}
+updateSiteStage(1);window.addEventListener('resize',resize);window.addEventListener('gamepadconnected',()=>{const el=$('controllerStatus');if(el){el.textContent='🎮 コントローラーを認識しました';el.classList.add('connected')}});window.addEventListener('gamepaddisconnected',()=>{const el=$('controllerStatus');if(el){el.textContent='🎮 Joy-Con／コントローラー接続待ち';el.classList.remove('connected')}});renderer.domElement.addEventListener('pointermove',pointerMove);renderer.domElement.addEventListener('pointerdown',e=>{if(mode==='playing')shoot(e.clientX,e.clientY)});$('fireBtn').addEventListener('pointerdown',e=>{e.preventDefault();if(mode==='playing')shoot(innerWidth/2,innerHeight*.52)});window.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='Enter')&&mode==='playing'){e.preventDefault();shoot(innerWidth/2,innerHeight*.52)}});$('startBtn').onclick=startGame;$('againBtn').onclick=startGame;
+ const resultView=$('finalHouseView');
+ resultView.addEventListener('pointerdown',e=>{if(mode!=='result')return;resultDrag=true;resultLastX=e.clientX;resultLastY=e.clientY;resultManualUntil=performance.now()+7000;resultView.classList.add('dragging');try{resultView.setPointerCapture(e.pointerId)}catch(_){}e.preventDefault()});
+ resultView.addEventListener('pointermove',e=>{if(!resultDrag||mode!=='result'||!previewHouse)return;const dx=e.clientX-resultLastX,dy=e.clientY-resultLastY;resultLastX=e.clientX;resultLastY=e.clientY;previewHouse.rotation.y+=dx*.012;resultTilt=Math.max(-1.1,Math.min(1.1,resultTilt+dy*.008));resultManualUntil=performance.now()+7000;e.preventDefault()});
+ const endResultDrag=e=>{resultDrag=false;resultView.classList.remove('dragging');try{if(e&&resultView.hasPointerCapture(e.pointerId))resultView.releasePointerCapture(e.pointerId)}catch(_){}};
+ resultView.addEventListener('pointerup',endResultDrag);resultView.addEventListener('pointercancel',endResultDrag);
+ resultView.addEventListener('wheel',e=>{if(mode!=='result')return;e.preventDefault();resultZoom=Math.max(.72,Math.min(1.55,resultZoom+(e.deltaY>0?.08:-.08)));resultManualUntil=performance.now()+7000},{passive:false});
+ let resultPinchStart=null;resultView.addEventListener('touchstart',e=>{if(mode==='result'&&e.touches.length===2)resultPinchStart=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)},{passive:true});resultView.addEventListener('touchmove',e=>{if(mode!=='result'||e.touches.length!==2||resultPinchStart===null)return;const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);resultZoom=Math.max(.72,Math.min(1.55,resultZoom+(resultPinchStart-d)*.002));resultPinchStart=d;resultManualUntil=performance.now()+7000;e.preventDefault()},{passive:false});resultView.addEventListener('touchend',()=>{resultPinchStart=null},{passive:true});
+ document.addEventListener('visibilitychange',()=>{if(clock)clock.getDelta()});resize();animate();}
+function initHousePreview(){
+ const el=$('housePreview');previewScene=new THREE.Scene();previewScene.background=new THREE.Color(0x8299a8);previewScene.fog=new THREE.Fog(0x8299a8,15,35);previewCamera=new THREE.PerspectiveCamera(38,el.clientWidth/el.clientHeight,.1,80);previewCamera.position.set(8,7.2,11);previewCamera.lookAt(0,2.8,0);previewRenderer=new THREE.WebGLRenderer({antialias:false,alpha:false,powerPreference:'low-power'});previewRenderer.setPixelRatio(Math.min(devicePixelRatio||1,.95));previewRenderer.setSize(el.clientWidth,el.clientHeight);previewRenderer.shadowMap.enabled=true;previewRenderer.shadowMap.type=THREE.PCFSoftShadowMap;previewRenderer.outputColorSpace=THREE.SRGBColorSpace;previewRenderer.toneMapping=THREE.ACESFilmicToneMapping;previewRenderer.toneMappingExposure=1.1;el.insertBefore(previewRenderer.domElement,$('previewLabel'));previewScene.add(new THREE.HemisphereLight(0xeaf6ff,0x66503b,2.3));let sun=new THREE.DirectionalLight(0xffe2b5,3);sun.position.set(-5,10,7);sun.castShadow=true;previewScene.add(sun);box(previewScene,0,-.25,0,14,.4,14,mat(0x6f7775));refreshHousePreview();
+}
+function refreshHousePreview(){
+ if(!previewScene)return;
+ if(previewHouse)previewScene.remove(previewHouse);
+ previewHouse=new THREE.Group();previewHouse.scale.setScalar(.90);previewScene.add(previewHouse);previewPulse=1;const previewParts=$('previewParts');if(previewParts)previewParts.textContent='獲得部材 '+Object.values(counts).reduce((a,b)=>a+b,0)+' 個｜建築中';
+ const raw=counts;const c=Object.fromEntries(TYPES.slice(0,7).map(t=>[t.id,Math.floor((raw[t.id]||0)/1.3)]).concat([['bonus',raw.bonus||0]]));const f=c.foundation||0, col=c.column||0, be=c.beam||0, wa=c.wall||0, wi=c.window||0, dr=c.door||0, ro=c.roof||0;
+ const con=mat(0x9ca4a8), wood=mat(0xc48b50), wall=mat(0xe9e2d3), roof=mat(0x354d65,.52), glass=mat(0x55c4e5,.18,.2), door=mat(0x85502f), trim=mat(0xf7f4eb), dark=mat(0x626c70), roofEdge=mat(0x26394a,.5);
+ // V23: every captured window and each roof slope now changes the visible model independently.
+ // Parts accumulate by count; small counts deliberately create an incomplete/odd house.
+ if(f===1){box(previewHouse,0,.22,0,2.85,.44,2.1,con)}if(f>=2){box(previewHouse,0,.22,0,5.7,.44,4.2,con);box(previewHouse,0,.46,0,5.35,.08,3.85,dark)}if(f>=3)for(let x=-2.5;x<=2.5;x+=.5)box(previewHouse,x,.5,0,.035,.05,3.7,mat(0xb6babc));
+ if(col>0){let positions=[[-2.35,-1.65],[2.35,-1.65],[-2.35,1.65],[2.35,1.65],[0,-1.65],[0,1.65]];let n=Math.min(6,Math.max(1,Math.ceil(col/2)));positions.slice(0,n).forEach(([x,z])=>box(previewHouse,x,1.8,z,.18,2.7,.18,wood));}
+ if(be>0){box(previewHouse,0,3.15,-1.65,Math.min(5,2.2+be*.45),.18,.2,wood);if(be>=2)box(previewHouse,0,3.15,1.65,5,.18,.2,wood);if(be>=3)for(let x of [-2.35,0,2.35])box(previewHouse,x,3.15,0,.18,.18,3.4,wood);}
+ if(wa>0){box(previewHouse,0,1.75,-1.72,4.8,2.5,.12,wall);if(wa>=2){box(previewHouse,-2.42,1.75,0,.12,2.5,3.4,wall);box(previewHouse,2.42,1.75,0,.12,2.5,3.4,wall);}if(wa>=3){ // front facade divided into real wall sections so openings remain visible
+   box(previewHouse,-1.65,1.75,1.72,1.5,2.5,.16,wall);box(previewHouse,1.65,1.75,1.72,1.5,2.5,.16,wall);
+   if(dr>0){
+     // Solid jamb returns meet the door casing so no daylight gaps remain beside the entrance.
+     box(previewHouse,-.70,1.52,1.72,.40,2.04,.16,wall);
+     box(previewHouse, .70,1.52,1.72,.40,2.04,.16,wall);
+     // Continuous lintel closes the wall above the door all the way to the upper floor.
+     box(previewHouse,0,2.55,1.72,1.82,.96,.16,wall);
+     box(previewHouse,0,3.045,1.81,1.92,.07,.20,trim);
+   }else box(previewHouse,0,1.75,1.72,1.5,2.5,.12,wall);
+ }if(wa>=4)box(previewHouse,0,.55,1.72,4.8,.12,.12,wall);}
+ // Second-floor envelope appears only after collecting enough wall pieces.
+ // Keep its top aligned with the roof eaves so there is no visible floating gap.
+ if(wa>=4){
+   box(previewHouse,0,3.61,-1.72,4.78,1.28,.16,wall);
+   box(previewHouse,-2.42,3.61,0,.16,1.28,3.42,wall);
+   box(previewHouse,2.42,3.61,0,.16,1.28,3.42,wall);
+   if(wa>=5){
+     // Upper front elevation: continuous infill above the entrance, plus side panels.
+     // This closes the conspicuous blank opening directly over the front door.
+     box(previewHouse,0,3.61,1.72,4.78,1.28,.16,wall);
+     // Continuous upper facade overlaps the side panels, eliminating hairline gaps.
+     box(previewHouse,0,4.255,1.82,4.82,.065,.20,trim);
+   }
+   // Gable infill closes the triangular space between upper walls and the pitched roof.
+   const gableShape=new THREE.Shape();gableShape.moveTo(-2.44,4.18);gableShape.lineTo(2.44,4.18);gableShape.lineTo(0,5.99);gableShape.closePath();
+   const gableGeo=new THREE.ShapeGeometry(gableShape);
+   for(const z of [-1.79,1.79]){const gable=new THREE.Mesh(gableGeo,wall);gable.position.z=z;gable.castShadow=true;gable.receiveShadow=true;previewHouse.add(gable);}
+   // V13 SITE PROGRESSION: match the triangle exactly to the roof pitch and place
+   // it directly against the exterior face of the rear wall.  The old triangle
+   // was too tall and too far behind the wall, leaving a visible dark slit.
+   if(ro>0){
+     const rearShape=new THREE.Shape();
+     rearShape.moveTo(-2.75,4.25);
+     rearShape.lineTo(2.75,4.25);
+     rearShape.lineTo(0,5.90);
+     rearShape.closePath();
+     const rearGeo=new THREE.ShapeGeometry(rearShape);
+     const rearGable=new THREE.Mesh(rearGeo,wall);
+     rearGable.position.z=-1.805;
+     rearGable.castShadow=true;rearGable.receiveShadow=true;
+     previewHouse.add(rearGable);
+     // Continuous rear eaves band overlaps the back-wall top and gable base.
+     box(previewHouse,0,4.255,-1.835,5.56,.19,.22,wall);
+     // Rear rake trims are set on the exterior side of the gable and follow
+     // exactly the same pitch as both roof panels; they conceal the hairline seam.
+     beamBetween(previewHouse,new THREE.Vector3(-2.79,4.27,-1.925),new THREE.Vector3(0,5.91,-1.925),.12,roofEdge);
+     beamBetween(previewHouse,new THREE.Vector3(0,5.91,-1.925),new THREE.Vector3(2.79,4.27,-1.925),.12,roofEdge);
+     // Rear corner boards and horizontal siding make the wall read as one
+     // continuous finished plane rather than a thin triangle floating above it.
+     box(previewHouse,-2.34,3.60,-1.825,.10,1.25,.08,trim);
+     box(previewHouse, 2.34,3.60,-1.825,.10,1.25,.08,trim);
+     for(let yy=3.10;yy<=4.12;yy+=.24){
+       box(previewHouse,0,yy,-1.827,4.62,.018,.035,mat(0xcfc5b3));
+     }
+     // Ridge cap follows the roof peak and closes the meeting line of the slopes.
+     beamBetween(previewHouse,new THREE.Vector3(0,5.93,-2.08),new THREE.Vector3(0,5.93,2.08),.14,roofEdge);
+   }
  }
- for(let i=particles.length-1;i>=0;i--){let p=particles[i];p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;p.vy+=.06;p.life-=dt;if(p.life<=0)particles.splice(i,1)}
- if(timeLeft<=0)finishStage();
+ // Rear lower-floor finish: corner trims and subtle siding seams align with
+ // the upper rear wall, reinforcing visual continuity from foundation to eaves.
+ if(wa>=3){
+   box(previewHouse,-2.34,1.75,-1.805,.09,2.38,.055,trim);
+   box(previewHouse, 2.34,1.75,-1.805,.09,2.38,.055,trim);
+   for(let yy=.62;yy<=2.82;yy+=.24)box(previewHouse,0,yy,-1.804,4.55,.018,.025,mat(0xcfc5b3));
+ }
+ if(wi>0){
+   // One captured window = one installed window. Upper windows are only fitted when the upper wall exists.
+   const lowerWindows=[[-1.55,2.0,1.81],[1.55,2.0,1.81],[-2.48,2.0,.2],[2.48,2.0,.2]];
+   const upperWindows=[[-1.45,3.72,1.81],[1.45,3.72,1.81]];
+   const availableWindows=wa>=4?lowerWindows.concat(upperWindows):lowerWindows;
+   availableWindows.slice(0,Math.min(availableWindows.length,wi)).forEach(([x,y,z])=>{
+     const front=Math.abs(z)>1, upper=y>3;
+     const w=upper?.82:.88,h=upper?.68:.95;
+     box(previewHouse,x,y,z,w,h,.12,trim);
+     box(previewHouse,x,y,z+(front?.07:0),w-.16,h-.17,.05,glass);
+     box(previewHouse,x,y,z+(front?.11:0),.05,h-.12,.04,trim);
+     box(previewHouse,x,y,z+(front?.11:0),w-.12,.05,.04,trim);
+     if(!upper)box(previewHouse,x,y-.51,z+(front?.03:0),1.02,.09,.22,mat(0xfaf7ef));
+   });
+ }
+ if(dr>0){box(previewHouse,0,1.15,1.83,1.05,1.85,.15,trim);box(previewHouse,0,1.15,1.92,.84,1.68,.07,door);cyl(previewHouse,.25,1.15,1.98,.045,.045,.05,mat(0xe8c65d),8).rotation.x=Math.PI/2;}
+ if(ro>0){
+   // One-storey roof sits on the first-floor walls; a two-storey shell raises the eaves.
+   const eaveY=wa>=4?4.25:3.05, ridgeY=wa>=4?5.9:4.8;
+   const eaveX=2.75, ridgeZ=0;
+   let n=Math.min(4,Math.max(1,Math.ceil(ro/2)));
+   for(let i=0;i<n;i++){let z=-1.9+i*(3.8/Math.max(1,n-1));beamBetween(previewHouse,new THREE.Vector3(-eaveX,eaveY,z),new THREE.Vector3(0,ridgeY,z),.11,roofEdge);beamBetween(previewHouse,new THREE.Vector3(0,ridgeY,z),new THREE.Vector3(eaveX,eaveY,z),.11,roofEdge);}
+   // V23: each roof pickup installs a slope independently: one side first, then the other.
+   const panelLength=Math.hypot(eaveX,ridgeY-eaveY)+.18;
+   const panelAngle=Math.atan2(ridgeY-eaveY,eaveX);
+   const panelCenterY=(eaveY+ridgeY)/2;
+   if(ro>=1){let left=box(previewHouse,-eaveX/2,panelCenterY,0,panelLength,.18,4.35,roof);left.rotation.z=panelAngle;}
+   if(ro>=2){let right=box(previewHouse,eaveX/2,panelCenterY,0,panelLength,.18,4.35,roof);right.rotation.z=-panelAngle;}
+   // Tile seams appear gradually as more roof pieces are collected.
+   const tileLine=mat(0x65798b,.42);
+   if(ro>=3){for(let z=-1.85;z<=1.9;z+=.38)beamBetween(previewHouse,new THREE.Vector3(-eaveX+.1,eaveY+.04,z),new THREE.Vector3(0,ridgeY,z),.025,roofEdge);}
+   if(ro>=4){for(let z=-1.85;z<=1.9;z+=.38)beamBetween(previewHouse,new THREE.Vector3(0,ridgeY,z),new THREE.Vector3(eaveX-.1,eaveY+.04,z),.025,roofEdge);}
+   for(let t=.18;t<.95;t+=.19){
+     const x=eaveX*(1-t), y=eaveY+(ridgeY-eaveY)*t;
+     if(ro>=5)beamBetween(previewHouse,new THREE.Vector3(-x,y+.035,-2.08),new THREE.Vector3(-x,y+.035,2.08),.022,tileLine);
+     if(ro>=6)beamBetween(previewHouse,new THREE.Vector3(x,y+.035,-2.08),new THREE.Vector3(x,y+.035,2.08),.022,tileLine);
+   }
+   if(ro>=4){box(previewHouse,0,ridgeY+.04,0,.22,.18,4.5,roofEdge);}
+ }
+ // Architectural finish: fascia, corner boards, sill details and roof-edge gutters.
+ if(wa>=2){
+   const fascia=mat(0xf8f3e8), shadow=mat(0x9b9a91), siding=mat(0xd6cdbb);
+   // Corner boards help the wall planes read as one continuous envelope.
+   for(const x of [-2.43,2.43]){
+     box(previewHouse,x,1.78,1.81,.09,2.56,.20,fascia);
+     box(previewHouse,x,3.62,-1.78,.09,1.25,.20,fascia);
+   }
+   // Thin horizontal siding seams on side and rear walls add scale without cutting through openings.
+   if(wa>=3){for(let y=.78;y<2.9;y+=.28){
+     box(previewHouse,-2.505,y,0,.018,.018,3.25,siding);
+     box(previewHouse, 2.505,y,0,.018,.018,3.25,siding);
+     box(previewHouse,0,y,-1.795,4.75,.018,.018,siding);
+   }}
+   if(wa>=4){for(let y=3.15;y<4.12;y+=.25){
+     box(previewHouse,-2.515,y,0,.02,.018,3.25,siding);
+     box(previewHouse, 2.515,y,0,.02,.018,3.25,siding);
+     box(previewHouse,0,y,-1.81,4.65,.018,.02,siding);
+   }}
+ }
+ // Window sills and mullions make glazing feel less like flat blue blocks.
+ if(wi>0){
+   const sill=mat(0xfaf7ef), mullion=mat(0xe9e5dc);
+   for(const [x,y,z] of [[-1.55,2,1.81],[1.55,2,1.81],[-2.48,2,.2],[2.48,2,.2]]){
+     const front=Math.abs(z)>1;
+     box(previewHouse,x,y-.51,z+(front?.03:0),1.02,.09,.22,sill);
+     box(previewHouse,x,y,z+(front?.135:0),.045,.78,.045,mullion);
+     box(previewHouse,x,y,z+(front?.135:0),.72,.045,.045,mullion);
+   }
+ }
+ // Porch, stairs, path, entry lights and planting only appear when the relevant parts are earned.
+ if(wa>=3&&dr>0){
+   box(previewHouse,0,.16,2.35,1.95,.22,1.15,con);
+   box(previewHouse,0,.045,2.92,1.75,.09,.36,mat(0x8e9698));
+   box(previewHouse,0,-.005,3.42,1.55,.06,.48,mat(0xaeb3b1));
+   if(ro>=2){
+     let awning=box(previewHouse,0,2.25,2.15,1.58,.14,.9,roof);awning.rotation.x=-.12;
+     for(const x of [-.68,.68])box(previewHouse,x,1.25,2.42,.09,1.9,.09,trim);
+   }
+   const lampMat=mat(0xffd989,.25,.1);
+   for(const x of [-.78,.78]){
+     box(previewHouse,x,2.05,1.93,.12,.24,.08,mat(0x343d43));
+     box(previewHouse,x,2.05,1.985,.085,.15,.025,lampMat);
+   }
+   // Paver path and low shrubs provide a finished front-yard silhouette.
+   for(let i=0;i<4;i++)box(previewHouse,0,-.025,3.85+i*.42,1.05,.045,.32,mat(i%2?0x9ca4a2:0xb5b9b5));
+   if(wa>=4){
+     for(const x of [-3.05,3.05]){
+       const shrub=new THREE.Mesh(new THREE.SphereGeometry(.38,12,9),mat(0x426a4c));shrub.position.set(x,.20,1.45);shrub.scale.set(1.25,.8,1);shrub.castShadow=true;previewHouse.add(shrub);
+       box(previewHouse,x,.06,1.45,.9,.12,.85,mat(0x665746));
+     }
+   }
+ }
+ // V24 exterior finishing pass: roof courses, gutters, downpipes, entry details and site landscaping.
+ // Tile courses run across both roof slopes and only appear once roof panels are installed.
+ if(ro>=2){
+   const tileMat=mat(0x718397,.52), tileLight=mat(0x8495a4,.48);
+   const ey=wa>=4?4.25:3.05, ry=wa>=4?5.9:4.8, ex=2.75;
+   for(let t=.22;t<.96;t+=.16){
+     const lx=-ex*(1-t), ly=ey+(ry-ey)*t+.12;
+     const rx=ex*(1-t), rY=ey+(ry-ey)*t+.12;
+     if(ro>=2){
+       beamBetween(previewHouse,new THREE.Vector3(lx,ly,-2.10),new THREE.Vector3(lx,ly,2.10),.018,tileMat);
+       beamBetween(previewHouse,new THREE.Vector3(rx,rY,-2.10),new THREE.Vector3(rx,rY,2.10),.018,tileMat);
+     }
+   }
+   // Fascia and gutters at the eaves, with downpipes on both front corners.
+   const fascia=mat(0x273b4c,.5), metal=mat(0x6d7a80,.4,.35);
+   for(const z of [-2.22,2.22]){
+     beamBetween(previewHouse,new THREE.Vector3(-2.82,ey-.03,z),new THREE.Vector3(2.82,ey-.03,z),.055,fascia);
+   }
+   if(wa>=3){
+     for(const x of [-2.48,2.48]){
+       cyl(previewHouse,x,.0,2.15,.045,.045,1,metal,8).position.y=1.65;
+       beamBetween(previewHouse,new THREE.Vector3(x,ey-.05,2.15),new THREE.Vector3(x,.55,2.15),.045,metal);
+       box(previewHouse,x,.56,2.15,.14,.08,.14,metal);
+     }
+   }
+ }
+ // Realistic front elevation details: door casing, handle plate, wall-mounted lights and house number.
+ if(dr>0&&wa>=3){
+   const casing=mat(0xf9f4e9), metal=mat(0x303a40,.3,.55), warm=mat(0xffd78c,.25,.05);
+   box(previewHouse,-.52,1.18,2.015,.075,1.92,.08,casing);
+   box(previewHouse,.52,1.18,2.015,.075,1.92,.08,casing);
+   box(previewHouse,0,2.14,2.015,1.12,.075,.08,casing);
+   box(previewHouse,.27,1.15,2.045,.07,.16,.035,metal);
+   cyl(previewHouse,.28,1.12,2.07,.035,.035,.035,mat(0xd8b86a,.25,.55),8).rotation.x=Math.PI/2;
+   box(previewHouse,.78,2.30,1.95,.30,.22,.045,metal);
+   box(previewHouse,.78,2.30,1.98,.24,.16,.025,mat(0xf3eee1));
+   // Small porch soffit and paired warm sconces improve the entry silhouette.
+   if(ro>=2){box(previewHouse,0,2.76,2.20,1.95,.10,1.02,mat(0xf0e7d6));}
+   for(const x of [-.88,.88]){
+     box(previewHouse,x,2.08,1.965,.15,.30,.09,metal);
+     box(previewHouse,x,2.08,2.02,.09,.18,.025,warm);
+   }
+ }
+ // Window glazing receives subtle reflections and deeper frames, rather than reading as flat cyan blocks.
+ if(wi>0){
+   const frameDark=mat(0x485b67,.35,.18), reflection=new THREE.MeshStandardMaterial({color:0xd9f5ff,roughness:.18,metalness:.12,transparent:true,opacity:.48});
+   const locations=[[-1.55,2,1.91],[1.55,2,1.91],[-2.48,2,.2],[2.48,2,.2],[-1.45,3.72,1.91],[1.45,3.72,1.91]];
+   locations.slice(0,Math.min(wi,wa>=4?6:4)).forEach(([x,y,z])=>{
+     const front=Math.abs(z)>1, upper=y>3, w=upper?.82:.88,h=upper?.68:.95;
+     box(previewHouse,x,y,z-.015,w+.08,h+.08,.055,frameDark);
+     box(previewHouse,x-.18,y+.12,z+(front?.13:.04),w*.28,.035,.018,reflection);
+   });
+ }
+ // Finished yard: a few planting beds, low bollard lights and a clear approach path.
+ if(wa>=4&&dr>0){
+   const soil=mat(0x554b3d), stone=mat(0xb9bdb8), green1=mat(0x47734d), green2=mat(0x6b965b), bollard=mat(0x39464b,.4,.25);
+   for(const x of [-3.05,3.05]){
+     box(previewHouse,x,.035,1.25,1.05,.07,1.25,soil);
+     for(let i=0;i<3;i++){
+       const shrub=new THREE.Mesh(new THREE.SphereGeometry(.25,10,8),i%2?green1:green2);
+       shrub.position.set(x+(i-1)*.25,.24,1.25+(i%2?.12:-.12));shrub.scale.set(1.1,.85,1);shrub.castShadow=true;previewHouse.add(shrub);
+     }
+   }
+   for(const x of [-1.35,1.35]){
+     cyl(previewHouse,x,.38,2.65,.055,.055,.72,bollard,10);
+     const lens=new THREE.Mesh(new THREE.SphereGeometry(.09,10,8),new THREE.MeshBasicMaterial({color:0xffd58b}));lens.position.set(x,.72,2.65);previewHouse.add(lens);
+   }
+   for(let i=0;i<5;i++)box(previewHouse,0,.015,3.7+i*.4,.86,.035,.25,stone);
+ }
+ // Eaves and ridge caps overlap roof panels so roof edges look finished from oblique angles.
+ if(ro>=2){
+   const cap=mat(0x25394b,.48);
+   for(const z of [-2.19,2.19])beamBetween(previewHouse,new THREE.Vector3(-2.8,wa>=4?4.22:3.02,z),new THREE.Vector3(0,wa>=4?5.88:4.78,z),.075,cap);
+   for(const z of [-2.19,2.19])beamBetween(previewHouse,new THREE.Vector3(0,wa>=4?5.88:4.78,z),new THREE.Vector3(2.8,wa>=4?4.22:3.02,z),.075,cap);
+   box(previewHouse,0,wa>=4?4.29:3.09,-.02,5.62,.10,.12,mat(0xe5e1d8));
+ }
+ if(!f&&!col&&!be&&!wa&&!wi&&!dr&&!ro){box(previewHouse,0,.12,0,2.5,.24,2,dark)}
+ previewHouse.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
+ const total=f+col+be+wa+wi+dr+ro;$('previewParts').textContent=`基礎${f} 柱${col} 梁${be} 壁${wa} 窓${wi} ドア${dr} 屋根${ro}`;$('previewLabel').textContent=total===0?'🏠 建築進捗 3D':`🏠 建築進捗 3D　部材 ${total}個`;
 }
-function drawBackground(){const s=stages[stageIndex];let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,s.sky);g.addColorStop(.64,'#c8e1e9');g.addColorStop(1,'#6e8190');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
- // distant skyline
- ctx.fillStyle='#537a91';for(let x=0;x<W;x+=rand(55,95)){let h=rand(55,160);ctx.fillRect(x,280-h,rand(35,75),h)}
- ctx.fillStyle='#d7b57a';ctx.beginPath();ctx.moveTo(0,520);ctx.lineTo(W*.2,440);ctx.lineTo(W*.42,510);ctx.lineTo(W*.63,420);ctx.lineTo(W,500);ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.fill();
- // ground
- ctx.fillStyle=s.ground;ctx.fillRect(0,520,W,200);
- ctx.strokeStyle='#5b493d';ctx.lineWidth=2;for(let y=540;y<720;y+=35){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y+rand(-8,8));ctx.stroke()}
- // cranes
- ctx.strokeStyle='#8b5d35';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(110,520);ctx.lineTo(110,90);ctx.lineTo(460,90);ctx.moveTo(280,90);ctx.lineTo(280,40);ctx.stroke();
- ctx.strokeStyle='#e6b33b';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(110,120);ctx.lineTo(460,120);ctx.lineTo(420,160);ctx.stroke();
- // central construction frame evolves
- const p=(stageIndex+1)/4;
- ctx.strokeStyle='#6c482f';ctx.lineWidth=18;ctx.beginPath();
- ctx.moveTo(300,520);ctx.lineTo(300,330);ctx.lineTo(980,330);ctx.lineTo(980,520);
- if(stageIndex>=1){ctx.moveTo(300,330);ctx.lineTo(640,180);ctx.lineTo(980,330);ctx.moveTo(640,180);ctx.lineTo(640,520)}
- if(stageIndex>=2){ctx.lineWidth=9;ctx.moveTo(340,390);ctx.lineTo(940,390);ctx.moveTo(450,330);ctx.lineTo(450,520);ctx.moveTo(820,330);ctx.lineTo(820,520)}
- ctx.stroke();
- if(stageIndex===2){ctx.fillStyle='#ead7bd';ctx.fillRect(330,350,600,170);ctx.fillStyle='#6b9bb6';ctx.fillRect(520,385,115,100);ctx.fillRect(700,385,115,100);ctx.fillStyle='#d5ad6d';ctx.fillRect(360,430,100,70);ctx.fillRect(835,430,65,70)}
- if(stageIndex===3){ctx.fillStyle='#f0c74b';ctx.fillRect(0,570,160,35);ctx.fillStyle='#394f5b';ctx.fillRect(35,535,90,35);ctx.fillStyle='#d5d8d9';ctx.fillRect(1040,570,180,20);ctx.fillStyle='#b65b39';ctx.fillRect(1080,540,90,30)}
- // vignette
- const v=ctx.createRadialGradient(W/2,H/2,180,W/2,H/2,700);v.addColorStop(0,'#0000');v.addColorStop(1,'#06132155');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+function showStageBanner(title,sub=''){const el=$('stageBanner');if(!el)return;$('stageBannerTitle').textContent=title;$('stageBannerSub').textContent=sub;el.classList.add('show');clearTimeout(stageBannerTimer);stageBannerTimer=setTimeout(()=>el.classList.remove('show'),1550)}
+function updateSiteStage(stage){
+ const s=Math.max(1,Math.min(3,stage));if(siteStage2)siteStage2.visible=s>=2;if(siteStage3)siteStage3.visible=s>=3;
+ const sky=s===1?0x9eb7c9:s===2?0x8da6b5:0x6f899b;
+ if(scene&&scene.background)scene.background.setHex(sky);if(scene&&scene.fog){scene.fog.color.setHex(sky);scene.fog.near=s===1?25:s===2?22:18;scene.fog.far=s===1?85:s===2?78:68;}
+ if(siteSun){siteSun.intensity=s===1?3.1:s===2?2.65:2.15;siteSun.color.setHex(s===3?0xffc58b:0xffe0b1);siteSun.position.set(s===1?-10:s===2?8:2,18,s===3?5:8)}
+ if(siteHemisphere){siteHemisphere.intensity=s===1?2.05:s===2?1.85:1.65;siteHemisphere.color.setHex(s===3?0xd7e7ff:0xe7f3ff)}
+ if(siteKeyLight){siteKeyLight.intensity=s===1?.72:s===2?.82:1.02;siteKeyLight.color.setHex(s===3?0xffb96b:0xffd39b)}if(siteRimLight){siteRimLight.intensity=s===3?.82:.58;siteRimLight.color.setHex(s===3?0x8fd8ff:0xa9cfff)}
+ const badge=$('siteStage');if(badge){badge.textContent=s===1?'現場 1｜着工・基礎工事':s===2?'現場 2｜躯体・足場工事':'現場 3｜仕上げ・完成演出';badge.style.background=s===1?'#f3b632':s===2?'#ff8a24':'#43c6a4';}
 }
-function drawTarget(t){let pulse=1+Math.sin(t.phase)*.08, r=t.r*pulse;ctx.save();ctx.translate(t.x,t.y);
- ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.shadowOffsetY=5;
- ctx.fillStyle='#f8f8ed';ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();
- ctx.shadowColor='transparent';ctx.lineWidth=Math.max(3,r*.12);ctx.strokeStyle='#bd2b1d';ctx.stroke();
- ctx.fillStyle='#ef4630';ctx.beginPath();ctx.arc(0,0,r*.57,0,Math.PI*2);ctx.fill();
- ctx.fillStyle='#fff9e9';ctx.beginPath();ctx.arc(0,0,r*.28,0,Math.PI*2);ctx.fill();
- ctx.fillStyle='#b81f19';ctx.beginPath();ctx.arc(0,0,r*.12,0,Math.PI*2);ctx.fill();
- // tiny depth shadow and label
- ctx.fillStyle='#162a3a';ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.fillText('+'+t.value,0,r+19);
- ctx.restore();
+function resize(){if(!renderer)return;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);if(previewRenderer){let canvasParent=previewRenderer.domElement.parentElement;let el=canvasParent===$('finalHouseView')?$('finalHouseView'):$('housePreview');let w=Math.max(1,el.clientWidth),h=Math.max(1,el.clientHeight);previewCamera.aspect=w/h;previewCamera.updateProjectionMatrix();previewRenderer.setSize(w,h)}}
+function pointerMove(e){const r=renderer.domElement.getBoundingClientRect();aimX=(e.clientX-r.left)/r.width*2-1;aimY=-((e.clientY-r.top)/r.height*2-1);$('crosshair').style.left=e.clientX+'px';$('crosshair').style.top=e.clientY+'px'}
+function makeTarget(type){let group=new THREE.Group();let m=mat(type.color,.45,type.id==='bonus'?.35:0),dark=mat(0x303a3e,.55),glass=mat(0x69d7ed,.18,.25);switch(type.id){case'foundation':box(group,0,0,0,1.65,.48,.8,m);for(let x of [-.55,0,.55])box(group,x,.27,0,.06,.08,.68,dark);break;case'column':box(group,0,0,0,.38,1.45,.38,m);box(group,0,.73,0,.5,.12,.5,dark);break;case'beam':box(group,0,0,0,1.65,.28,.36,m);box(group,0,-.19,0,1.45,.08,.18,dark);break;case'wall':box(group,0,0,0,1.35,1.25,.18,m);for(let y=-.4;y<.6;y+=.25)box(group,0,y,.1,1.35,.025,.025,mat(0xb8b2a5));break;case'window':box(group,0,0,0,1.15,1.05,.15,dark);box(group,0,0,.1,.98,.88,.05,glass);box(group,0,0,.14,.07,.9,.06,m);box(group,0,0,.14,1,.06,.06,m);break;case'door':box(group,0,0,0,.85,1.4,.16,m);box(group,-.22,.03,.1,.03,1.1,.03,dark);cyl(group,.26,0,.12,.045,.045,.05,mat(0xe8c65d),8).rotation.x=Math.PI/2;break;case'roof':{let a=new THREE.Vector3(-.85,-.3,0),b=new THREE.Vector3(0,.48,0),c=new THREE.Vector3(.85,-.3,0);beamBetween(group,a,b,.12,m);beamBetween(group,b,c,.12,m);box(group,0,-.3,0,1.7,.12,.45,dark);break}case'bonus':cyl(group,0,-.08,0,.6,.48,.22,m,20);let dome=new THREE.Mesh(new THREE.SphereGeometry(.48,20,12,0,Math.PI*2,0,Math.PI/2),m);dome.position.y=.02;group.add(dome);box(group,0,-.02,.42,.85,.12,.25,m);break;}
+let ring=new THREE.Mesh(new THREE.TorusGeometry(1.05,.035,8,36),new THREE.MeshBasicMaterial({color:type.color}));ring.position.z=.05;group.add(ring);const innerRing=new THREE.Mesh(new THREE.TorusGeometry(.82,.018,6,32),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.68}));innerRing.position.z=.055;group.add(innerRing);group.userData={type,ring,innerRing,age:0};scene.add(group);let side=(Math.random()-.5)*9,baseY=2.35+Math.random()*3.1,baseZ=-1-Math.random()*4;group.position.set(side,baseY,baseZ);let size=.62+Math.random()*.22;if(type.id==='bonus')size*=1.06;group.scale.setScalar(size);group.userData.baseScale=size;group.userData.baseX=side;group.userData.baseY=baseY;group.userData.baseZ=baseZ;group.userData.moveAmp=.75+Math.random()*.8;group.userData.moveRate=.8+Math.random()*.8;group.userData.movePhase=Math.random()*Math.PI*2;group.userData.spin=(Math.random()-.5)*1.8;group.userData.points=type.points;targets.push(group)}
+function chooseTargetType(){
+ // Construction-balance assist: parts with fewer captures are more likely to appear,
+ // so one unlucky random streak is less likely to leave the final house without key parts.
+ const buildTypes=TYPES.slice(0,7);let weights=buildTypes.map(t=>1/Math.pow(1+(counts[t.id]||0),.72));
+ // A small early-game boost for the foundation keeps the first seconds readable.
+ if((counts.foundation||0)===0)weights[0]*=1.35;
+ const sum=weights.reduce((a,b)=>a+b,0);let r=Math.random()*sum;
+ for(let i=0;i<buildTypes.length;i++){r-=weights[i];if(r<=0)return buildTypes[i]}
+ return buildTypes[0];
 }
-function draw(){drawBackground();targets.forEach(drawTarget);
- particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.life*2);ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1});
- // blaster
- ctx.save();ctx.translate(mouse.x,mouse.y);ctx.strokeStyle='#69ffb1';ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,20,0,Math.PI*2);ctx.moveTo(-34,0);ctx.lineTo(-10,0);ctx.moveTo(10,0);ctx.lineTo(34,0);ctx.moveTo(0,-34);ctx.lineTo(0,-10);ctx.moveTo(0,10);ctx.lineTo(0,34);ctx.stroke();ctx.fillStyle='#69ffb1';ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();ctx.restore();
- $('time').textContent=Math.max(0,timeLeft).toFixed(1);$('score').textContent=String(score).padStart(5,'0');$('build').textContent=build+'%';
+function startGame(){if(!renderer)return;clearTimeout(window.__houseBuildTimer);mainBuildFx.forEach(f=>{if(scene)scene.remove(f.mesh);if(f.mesh.geometry)f.mesh.geometry.dispose();if(f.mesh.material)f.mesh.material.dispose()});mainBuildFx=[];buildFx.forEach(f=>previewScene&&previewScene.remove(f.mesh));buildFx=[];shots=0;hitCount=0;missCount=0;stageNow=1;previewPulse=0;previewReveal=0;resultBuildPct=0;resultCameraBlend=0;resultCamStart=null;resultDrag=false;resultTilt=0;resultZoom=1;resultManualUntil=0;const pv=$('housePreview');if(previewRenderer&&previewRenderer.domElement.parentElement!==pv){pv.insertBefore(previewRenderer.domElement,$('previewLabel'));}previewCamera.position.set(8,7.2,11);previewCamera.lookAt(0,2.8,0);resize();clearTargets();if(houseGroup){scene.remove(houseGroup);disposeTree(houseGroup);houseGroup=null}counts={};TYPES.forEach(t=>counts[t.id]=0);siteHitPulse=0;lastStageAnnounced=1;$('stageBanner').classList.remove('show');refreshHousePreview();score=0;combo=0;time=40;lastSpawn=0;spawnGap=.72;gameStart=performance.now()/1000;mode='playing';$('start').classList.add('hidden');$('result').classList.add('hidden');$('time').textContent='40';$('score').textContent='00000';$('combo').textContent='×0';$('miss').textContent='0';$('challengePercent').textContent='0%';$('challengeFill').style.width='0%';$('liveAccuracy').textContent='命中率 0%';$('liveHits').textContent='命中 0 / 0';$('stageLabel').textContent='STAGE 1｜基礎工事';updateSiteStage(1);$('partName').textContent='部材を狙え！';$('crosshair').style.left='50%';$('crosshair').style.top='52%';gamepadLast=false;$('progress').innerHTML=TYPES.slice(0,7).map(t=>`<div class="pbit" id="p-${t.id}"></div>`).join('')}
+function clearTargets(){targets.forEach(t=>{scene.remove(t);disposeTree(t)});targets=[];particles.forEach(p=>{scene.remove(p.obj);if(p.obj.geometry)p.obj.geometry.dispose();if(p.obj.material)p.obj.material.dispose()});particles=[]}
+function playHitSound(bonus=false){
+ try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();const t=audioCtx.currentTime;const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();osc.type=bonus?'triangle':'sine';osc.frequency.setValueAtTime(bonus?880:540,t);osc.frequency.exponentialRampToValueAtTime(bonus?1320:820,t+.085);gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(bonus?.16:.09,t+.012);gain.gain.exponentialRampToValueAtTime(.0001,t+.16);osc.connect(gain);gain.connect(audioCtx.destination);osc.start(t);osc.stop(t+.17);
+ }catch(e){}
 }
-function finishStage(){if(stageEnd)return;stageEnd=true;running=false;build=clamp(build+Math.floor(stageScore/120),0,100);
- if(stageIndex<3){stageIndex++;$('title').textContent='STAGE CLEAR!';$('desc').innerHTML=stages[stageIndex-1].name+'<br>今回の得点：'+stageScore+'点';$('start').textContent='次のステージへ';$('start').classList.remove('hidden');$('how').classList.add('hidden');$('message').classList.remove('hidden');$('start').onclick=()=>{startStage();$('message').classList.add('hidden')}}else{showResult()}}
-function showResult(){ $('title').textContent='あなたの家が完成しました！';$('desc').innerHTML='総合スコア：<b style="color:#ffe06a;font-size:30px">'+score+'点</b><br>基礎・構造・内装・デザインを攻略！';$('start').textContent='もう一度あそぶ';$('start').classList.remove('hidden');$('how').classList.add('hidden');$('message').classList.remove('hidden');$('start').onclick=()=>{startGame()}}
-function loop(now){if(!running)return;let dt=Math.min(.04,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop)}
-draw();
-</script>
-</body>
-</html>
+function spawnBuildFx(type){
+ if(!previewScene||!type)return;
+ // The flying piece has a silhouette related to the collected construction part.
+ const material=new THREE.MeshStandardMaterial({color:type.color,emissive:type.color,emissiveIntensity:1.35,roughness:.3,metalness:type.id==='bonus'?.25:.08,transparent:true,opacity:1});
+ let geometry,rotation=new THREE.Euler(Math.random()*1.4,Math.random()*2.4,Math.random()*1.2);
+ switch(type.id){
+  case'foundation':geometry=new THREE.BoxGeometry(.72,.16,.5);break;
+  case'column':geometry=new THREE.BoxGeometry(.16,.72,.16);break;
+  case'beam':geometry=new THREE.BoxGeometry(.72,.14,.16);break;
+  case'wall':geometry=new THREE.BoxGeometry(.56,.48,.08);break;
+  case'window':geometry=new THREE.BoxGeometry(.42,.38,.07);break;
+  case'door':geometry=new THREE.BoxGeometry(.28,.52,.07);break;
+  case'roof':geometry=new THREE.BoxGeometry(.62,.12,.38);rotation.z=-.32;break;
+  default:geometry=new THREE.SphereGeometry(.22,14,10);break;
+ }
+ const mesh=new THREE.Mesh(geometry,material);mesh.castShadow=true;
+ const start=new THREE.Vector3((Math.random()-.5)*7,1.0+Math.random()*3.8,2.6+Math.random()*1.2);
+ const slot=(counts[type.id]||1)-1;let target;
+ switch(type.id){
+  // Destinations are aligned to the actual geometry in refreshHousePreview().
+  // Repeated captures cycle through real attachment positions rather than a generic center point.
+  case'foundation':target=new THREE.Vector3([-1.45,0,1.45][slot%3],.43,[-.95,0,.95][Math.floor(slot/3)%3]);break;
+  case'column':{const posts=[[-2.35,-1.65],[0,-1.65],[2.35,-1.65],[-2.35,1.65],[0,1.65],[2.35,1.65]];const q=posts[slot%posts.length];target=new THREE.Vector3(q[0],1.8,q[1]);break;}
+  case'beam':{const beams=[[0,3.15,-1.65],[0,3.15,1.65],[-2.35,3.15,0],[2.35,3.15,0],[0,3.15,0]];const q=beams[slot%beams.length];target=new THREE.Vector3(q[0],q[1],q[2]);break;}
+  case'wall':{const walls=[[0,1.75,-1.78],[0,1.75,1.78],[-2.48,1.75,0],[2.48,1.75,0],[0,3.61,-1.78],[0,3.61,1.78]];const q=walls[slot%walls.length];target=new THREE.Vector3(q[0],q[1],q[2]);break;}
+  case'window':{const windows=[[-1.55,2,1.91],[1.55,2,1.91],[-2.48,2,.2],[2.48,2,.2],[-1.45,3.72,1.91],[1.45,3.72,1.91]];const q=windows[slot%windows.length];target=new THREE.Vector3(q[0],q[1],q[2]);break;}
+  case'door':target=new THREE.Vector3(0,1.15,1.96);break;
+  case'roof':{const side=slot%2===0?-1:1;const x=side*1.35;const eaveY=counts.wall>=4?4.25:3.05;const ridgeY=counts.wall>=4?5.9:4.8;const y=eaveY+(ridgeY-eaveY)*(1-Math.abs(x)/2.75);const z=[-1.5,-.5,.5,1.5][Math.floor(slot/2)%4];target=new THREE.Vector3(x,y+.08,z);break;}
+  default:target=new THREE.Vector3(0,2.8,.2);break;
+ }
+ mesh.position.copy(start);mesh.rotation.copy(rotation);previewScene.add(mesh);
+ buildFx.push({mesh,age:0,duration:.72,start,target,rotation:mesh.rotation.clone(),typeId:type.id,arcHeight:.75+Math.random()*.65});
+ // A small glowing ring marks the assembly destination for a brief moment.
+ const ring=new THREE.Mesh(new THREE.TorusGeometry(.28,.025,6,20),new THREE.MeshBasicMaterial({color:type.color,transparent:true,opacity:.85}));ring.position.copy(target);ring.rotation.x=Math.PI/2;previewScene.add(ring);buildFx.push({mesh:ring,age:0,duration:.52,start:target.clone(),target:target.clone(),isRing:true});
+}
+function spawnMainBuildFx(type){
+ if(!scene||!type||type.id==='bonus')return;
+ // A second, larger assembly effect appears on the projected main scene.
+ const color=type.color;let geometry;
+ switch(type.id){case'foundation':geometry=new THREE.BoxGeometry(.72,.18,.5);break;case'column':geometry=new THREE.BoxGeometry(.18,.72,.18);break;case'beam':geometry=new THREE.BoxGeometry(.72,.15,.18);break;case'wall':geometry=new THREE.BoxGeometry(.58,.5,.10);break;case'window':geometry=new THREE.BoxGeometry(.42,.36,.08);break;case'door':geometry=new THREE.BoxGeometry(.3,.55,.08);break;case'roof':geometry=new THREE.BoxGeometry(.62,.12,.38);break;default:return;}
+ const material=new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:1.6,roughness:.28,metalness:.08,transparent:true,opacity:1});
+ const mesh=new THREE.Mesh(geometry,material);mesh.castShadow=true;
+ const slot=Math.max(0,(counts[type.id]||1)-1);let x=0,y=1.5,z=-3;
+ if(type.id==='foundation'){x=[-1.85,0,1.85][slot%3];z=-3+[-1.25,1.25][Math.floor(slot/3)%2];y=.25;}
+ else if(type.id==='column'){const q=[[-2.35,-1.55],[0,-1.55],[2.35,-1.55],[-2.35,1.55],[0,1.55],[2.35,1.55]][slot%6];x=q[0];z=-3+q[1];y=1.78;}
+ else if(type.id==='beam'){const q=[[-0,3.2,-1.55],[0,3.2,1.55],[-2.35,3.2,0],[2.35,3.2,0],[0,3.2,0]][slot%5];x=q[0];y=q[1];z=-3+q[2];}
+ else if(type.id==='wall'){const q=[[-1.2,1.75,-1.62],[1.2,1.75,-1.62],[-1.78,1.75,1.62],[1.78,1.75,1.62],[-2.42,1.75,0],[2.42,1.75,0],[0,3.45,-1.62],[0,3.45,1.62]][slot%8];x=q[0];y=q[1];z=-3+q[2];}
+ else if(type.id==='window'){const q=[[-1.25,2.05,1.73],[1.25,2.05,1.73],[-2.51,2.05,-.55],[2.51,2.05,-.55],[-1.25,3.55,1.73],[1.25,3.55,1.73]][slot%6];x=q[0];y=q[1];z=-3+q[2];}
+ else if(type.id==='door'){x=0;y=1.22;z=-1.18;}
+ else if(type.id==='roof'){x=(slot%2===0?-1:1)*1.42;y=4.12;z=-3-1.35+(Math.floor(slot/2)%4)*.9;mesh.rotation.z=x<0?.56:-.56;}
+ const target=new THREE.Vector3(x,y,z);const start=new THREE.Vector3((Math.random()-.5)*9,2.2+Math.random()*4,4+Math.random()*2);mesh.position.copy(start);scene.add(mesh);
+ mainBuildFx.push({mesh,age:0,duration:.64+Math.random()*.14,start,target,arcHeight:.45+Math.random()*.4,baseRotation:mesh.rotation.clone()});
+ const ring=new THREE.Mesh(new THREE.TorusGeometry(.34,.035,7,24),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.9}));ring.position.copy(target);ring.rotation.x=Math.PI/2;scene.add(ring);mainBuildFx.push({mesh:ring,age:0,duration:.48,start:target.clone(),target:target.clone(),ring:true});
+}
+function shoot(x,y){if(mode!=='playing')return;shots++;let rect=renderer.domElement.getBoundingClientRect(),ndc=new THREE.Vector2((x-rect.left)/rect.width*2-1,-((y-rect.top)/rect.height*2-1)),ray=new THREE.Raycaster();ray.setFromCamera(ndc,camera);let objs=[];targets.forEach(t=>t.traverse(o=>{if(o.isMesh)objs.push(o)}));let hits=ray.intersectObjects(objs,false);if(hits.length){let target=hits[0].object;while(target.parent&&!target.userData.type)target=target.parent;if(target.userData.type){let type=target.userData.type;hitCount++;counts[type.id]++;combo++;siteHitPulse=1;spawnBuildFx(type);if(type.id!=='bonus'){scheduleBuildHouse();spawnMainBuildFx(type)}playHitSound(type.id==='bonus');
+ const targetCenter=target.getWorldPosition(new THREE.Vector3());const hitDelta=hits[0].point.clone().sub(targetCenter);const precision=Math.sqrt(hitDelta.x*hitDelta.x+hitDelta.y*hitDelta.y);const perfect=precision<(target.userData.baseScale||.7)*.30;
+ const streakBonus=Math.min(combo,15)*14;const perfectBonus=perfect?90:0;const gained=Math.round(type.points*1.5)+streakBonus+perfectBonus;score+=gained;showScorePop(x,y,gained,combo);previewPulse=.8;refreshHousePreview();$('miss').textContent=missCount;$('buildToast').textContent=(perfect?'🎯 PERFECT HIT！ +90　':'🏗️ ')+type.name+'を住宅に組み込み中！';$('buildToast').classList.add('show');clearTimeout(window.__buildToastTimer);window.__buildToastTimer=setTimeout(()=>$('buildToast').classList.remove('show'),650);if(combo>0&&combo%5===0){showStageBanner('🔥 '+combo+' COMBO！','連続命中！住宅の組み立てが加速！');$('partName').textContent='🔥 '+combo+' COMBO！ 建築ブースト！';$('crosshair').classList.add('hit');}else if(perfect){$('partName').textContent='🎯 PERFECT HIT！ +90 BONUS';}else{$('partName').textContent=counts[type.id]%2===0?type.name+' 2個達成！住宅が成長！':type.name+' GET！';}$('crosshair').classList.add('hit');setTimeout(()=>$('crosshair').classList.remove('hit'),120);$('flash').classList.remove('boom');void $('flash').offsetWidth;$('flash').classList.add('boom');host.classList.remove('shake');void host.offsetWidth;host.classList.add('shake');setTimeout(()=>host.classList.remove('shake'),170);burst(hits[0].point,type.color);scene.remove(target);disposeTree(target);targets=targets.filter(t=>t!==target);updateHUD();return}}
+combo=0;score=Math.max(0,score-10);$('partName').textContent='はずれ！ −10';updateHUD()}
+function showScorePop(x,y,points,streak){const el=document.createElement('div');el.className='score-pop';el.textContent='+'+points+(streak>=5?'  🔥'+streak+' COMBO':'');el.style.left=Math.max(50,Math.min(innerWidth-50,x))+'px';el.style.top=Math.max(70,Math.min(innerHeight-80,y-24))+'px';document.body.appendChild(el);setTimeout(()=>el.remove(),800)}
+function burst(pos,color){for(let i=0;i<18;i++){let mesh=new THREE.Mesh(new THREE.SphereGeometry(.045+Math.random()*.04,7,7),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.98}));mesh.position.copy(pos);scene.add(mesh);particles.push({obj:mesh,v:new THREE.Vector3((Math.random()-.5)*5.8,Math.random()*4.6,(Math.random()-.5)*4.8),life:.72})}}
+function updateHUD(){ $('score').textContent=String(score).padStart(5,'0');$('combo').textContent='×'+combo;const accuracy=shots?Math.round(hitCount/shots*100):0;const pct=Math.min(100,Math.max(0,score/10000*100));if($('challengePercent'))$('challengePercent').textContent=Math.max(0,Math.floor(score)).toLocaleString()+' / 10,000';if($('challengeFill'))$('challengeFill').style.width=pct+'%';if($('liveAccuracy'))$('liveAccuracy').textContent='命中率 '+accuracy+'%';if($('liveHits'))$('liveHits').textContent='命中 '+hitCount+' / '+shots;for(let t of TYPES.slice(0,7)){let el=$('p-'+t.id);if(el)el.classList.toggle('on',counts[t.id]>0)}}
+function disposeTree(root){if(!root)return;root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m&&m.dispose&&m.dispose());else if(o.material.dispose)o.material.dispose();}})}
+function scheduleBuildHouse(){clearTimeout(window.__houseBuildTimer);window.__houseBuildTimer=setTimeout(()=>{if(mode==='playing')buildHouse()},110)}
+function buildHouse(){
+ if(houseGroup){scene.remove(houseGroup);disposeTree(houseGroup);houseGroup=null;}
+ houseGroup=new THREE.Group();houseGroup.position.set(0,0,-3);scene.add(houseGroup);
+ const raw=counts;const c=Object.fromEntries(TYPES.slice(0,7).map(t=>[t.id,Math.floor((raw[t.id]||0)/1.3)]).concat([['bonus',raw.bonus||0]]));
+ const concrete=mat(0x9da5a8),wood=mat(0xc48b50),wall=mat(0xf0e9d8),roof=mat(0x394f67,.5),glass=mat(0x53b9d6,.2,.2),door=mat(0x84502f),trim=mat(0xffffff),base=mat(0x6c7376),dark=mat(0x60686b);
+ // Foundation grows as individual concrete pads are collected.
+ const pads=[[-1.85,-1.25],[0,-1.25],[1.85,-1.25],[-1.85,1.25],[0,1.25],[1.85,1.25]];
+ for(let i=0;i<Math.min(c.foundation||0,pads.length);i++){const [x,z]=pads[i];box(houseGroup,x,.22,z,1.78,.42,1.18,concrete);box(houseGroup,x,.45,z,1.72,.08,1.12,base)}
+ const posts=[[-2.35,-1.55],[0,-1.55],[2.35,-1.55],[-2.35,1.55],[0,1.55],[2.35,1.55]];
+ for(let i=0;i<Math.min(c.column||0,posts.length);i++){const [x,z]=posts[i];box(houseGroup,x,1.78,z,.18,2.85,.18,wood)}
+ const beams=[{a:[-2.35,3.2,-1.55],b:[2.35,3.2,-1.55]},{a:[-2.35,3.2,1.55],b:[2.35,3.2,1.55]},{a:[-2.35,3.2,-1.55],b:[-2.35,3.2,1.55]},{a:[2.35,3.2,-1.55],b:[2.35,3.2,1.55]},{a:[0,3.2,-1.55],b:[0,3.2,1.55]}];
+ for(let i=0;i<Math.min(c.beam||0,beams.length);i++){const q=beams[i];beamBetween(houseGroup,new THREE.Vector3(...q.a),new THREE.Vector3(...q.b),.16,wood)}
+ // Wall panels appear one by one; the front is split so the entrance remains clear.
+ const panels=[{p:[-1.2,1.75,-1.62],d:[2.2,2.55,.12]},{p:[1.2,1.75,-1.62],d:[2.2,2.55,.12]},{p:[-1.78,1.75,1.62],d:[1.25,2.55,.12]},{p:[1.78,1.75,1.62],d:[1.25,2.55,.12]},{p:[-2.42,1.75,0],d:[.12,2.55,3.15]},{p:[2.42,1.75,0],d:[.12,2.55,3.15]},{p:[0,3.45,-1.62],d:[4.7,1.05,.12]},{p:[0,3.45,1.62],d:[4.7,1.05,.12]}];
+ for(let i=0;i<Math.min(c.wall||0,panels.length);i++){const q=panels[i];box(houseGroup,...q.p,...q.d,wall)}
+ const windows=[[-1.25,2.05,1.73],[1.25,2.05,1.73],[-2.51,2.05,-.55],[2.51,2.05,-.55],[-1.25,3.55,1.73],[1.25,3.55,1.73]];
+ for(let i=0;i<Math.min(c.window||0,windows.length);i++){const [x,y,z]=windows[i];const side=Math.abs(x)>2.4;const front=z>0;const frameBox=(xx,yy,zz,w,h,d,m)=>box(houseGroup,xx,yy,zz,w,h,d,m);if(side){frameBox(x,y,z,.08,.82,.92,trim);frameBox(x,y,z,.09,.68,.76,glass);frameBox(x,y,z,.10,.045,.76,trim);frameBox(x,y,z,.10,.68,.045,trim)}else{frameBox(x,y,z,.92,.82,.08,trim);frameBox(x,y,z,.76,.66,.045,glass);frameBox(x,y,z,.76,.045,.05,trim);frameBox(x,y,z,.045,.66,.05,trim)}}
+ if((c.door||0)>0){box(houseGroup,0,1.22,1.73,1.05,2.18,.14,trim);box(houseGroup,0,1.22,1.82,.84,1.98,.08,door);cyl(houseGroup,.27,1.22,1.88,.045,.045,.06,mat(0xe8c65d),10).rotation.x=Math.PI/2;box(houseGroup,0,.12,2.03,1.35,.18,.62,concrete)}
+ // V31 exterior finish: corner boards, horizontal siding reveals, window sills and a continuous fascia.
+ // Details are only added to wall sections that have actually been collected.
+ const siding=mat(0xd5cbb7,.86),trimDark=mat(0x6f7d82,.58),metal=mat(0x596a73,.42,.25);
+ if((c.wall||0)>=1){
+   // Rear wall siding lines, kept shallow so they read as cladding rather than structural beams.
+   for(let y=.72;y<=2.78;y+=.34)box(houseGroup,0,y,-1.692,4.28,.022,.018,siding);
+ }
+ if((c.wall||0)>=3){
+   // Front side panels only: leave the entrance zone clear.
+   for(const x of [-1.78,1.78])for(let y=.72;y<=2.78;y+=.34)box(houseGroup,x,y,1.692,1.05,.022,.018,siding);
+ }
+ if((c.wall||0)>=5){
+   for(const x of [-2.49,2.49]){
+     box(houseGroup,x,1.78,0,.09,2.72,.10,trim);
+     for(let y=.72;y<=2.78;y+=.34)box(houseGroup,x,y,0,.018,.022,2.95,siding);
+   }
+ }
+ if((c.wall||0)>=4){
+   // Upper-floor cladding and crisp fascia bands.
+   for(let y=3.05;y<=3.88;y+=.24){box(houseGroup,0,y,-1.70,4.35,.018,.018,siding);if((c.wall||0)>=5)box(houseGroup,0,y,1.70,4.35,.018,.018,siding)}
+   box(houseGroup,0,4.02,-1.72,4.86,.10,.20,trim);
+   if((c.wall||0)>=5)box(houseGroup,0,4.02,1.72,4.86,.10,.20,trim);
+ }
+ // Window ledges make captured windows look fitted into the facade.
+ for(let i=0;i<Math.min(c.window||0,windows.length);i++){
+   const [x,y,z]=windows[i];const side=Math.abs(x)>2.4;const front=z>0;
+   if(side)box(houseGroup,x,y-.48,z,.14,.09,1.02,trim);
+   else if(front)box(houseGroup,x,y-.48,z,.98,.09,.18,trim);
+ }
+ // V33: glazing reflections, mullions, and a more convincing entrance assembly.
+ // The highlights are restrained so they remain readable on a school projector.
+ for(let i=0;i<Math.min(c.window||0,windows.length);i++){
+   const [x,y,z]=windows[i],side=Math.abs(x)>2.4,front=z>0;
+   if(!side){
+     const paneZ=front?1.775:-1.665;
+     // A slim diagonal reflection across the glass suggests sky reflections.
+     const glint=box(houseGroup,x-.18,y+.13,paneZ,.035,.48,.018,mat(0xdaf8ff,.22,.08));
+     glint.rotation.z=-.42;
+     box(houseGroup,x,y,paneZ,.045,.64,.022,trimDark);
+     box(houseGroup,x,y,paneZ,.72,.035,.022,trimDark);
+     if(front){
+       box(houseGroup,x-.52,y,.03,.10,.88,.12,trimDark);
+       box(houseGroup,x+.52,y,.03,.10,.88,.12,trimDark);
+     }
+   }else{
+     const paneX=x>0?2.555:-2.555;
+     const glint=box(houseGroup,paneX,y,z-.17,.018,.48,.035,mat(0xdaf8ff,.22,.08));
+     glint.rotation.y=.42;
+     box(houseGroup,paneX,y,z,.022,.64,.045,trimDark);
+     box(houseGroup,paneX,y,z,.022,.035,.72,trimDark);
+   }
+ }
+ if((c.door||0)>0){
+   // Small entrance canopy, brackets, and a low step make the doorway feel built-in.
+   box(houseGroup,0,2.42,2.02,1.55,.13,.72,roof);
+   for(const x of [-.58,.58])beamBetween(houseGroup,new THREE.Vector3(x,2.02,1.83),new THREE.Vector3(x,2.38,2.20),.075,trimDark);
+   box(houseGroup,0,.24,2.30,1.55,.22,.48,concrete);
+   if((c.wall||0)>=3){
+     // Exterior wall lamps flank the door when enough facade has been collected.
+     for(const x of [-1.02,1.02]){
+       box(houseGroup,x,1.82,1.72,.16,.28,.08,trimDark);
+       box(houseGroup,x,1.83,1.77,.10,.19,.035,mat(0xffd98a,.28,.05));
+     }
+   }
+ }
+ // Roof tiles are added in pairs; each collected roof part fills one slope section.
+ const roofSlots=[];for(let zi=0;zi<4;zi++){roofSlots.push({side:-1,z:-1.35+zi*.9});roofSlots.push({side:1,z:-1.35+zi*.9})}
+ for(let i=0;i<Math.min(c.roof||0,roofSlots.length);i++){const q=roofSlots[i],ang=Math.atan(1.8/2.85);const panel=box(houseGroup,q.side*1.42,4.12,q.z,3.32,.13,.86,roof);panel.rotation.z=q.side<0?ang:-ang;}
+ if((c.roof||0)>=2){
+   beamBetween(houseGroup,new THREE.Vector3(0,5.06,-1.8),new THREE.Vector3(0,5.06,1.8),.14,mat(0x26394c));
+   // Ridge cap, eaves gutter and downpipes give the roof a finished architectural edge.
+   box(houseGroup,0,4.96,0, .22,.18,3.85,roof);
+   for(const z of [-1.82,1.82])box(houseGroup,0,3.45,z,5.15,.12,.12,metal);
+   for(const x of [-2.48,2.48])for(const z of [-1.82,1.82]){
+     cyl(houseGroup,x,1.9,z,.045,.045,3.0,metal,8);
+     box(houseGroup,x,3.38,z,.12,.12,.12,metal);
+   }
+   // Individual tile-course lines follow the roof slope, adding scale and depth.
+   for(const q of roofSlots.slice(0,Math.min(c.roof||0,roofSlots.length))){
+     const ang=Math.atan(1.8/2.85);
+     for(const zoff of [-.30,0,.30]){
+       const line=box(houseGroup,q.side*1.42,4.16,q.z+zoff,3.12,.025,.025,mat(0x65798b,.48,.12));
+       line.rotation.z=q.side<0?ang:-ang;
+     }
+   }
+   // Roof seams follow each sloped panel; these thin raised ribs suggest standing seams/tiles.
+   for(const q of roofSlots.slice(0,Math.min(c.roof||0,roofSlots.length))){
+     const ang=Math.atan(1.8/2.85);
+     for(const offset of [-.42,0,.42]){
+       const rib=box(houseGroup,q.side*1.42+offset,4.19,q.z, .035,.035,.82,roof);
+       rib.rotation.z=q.side<0?ang:-ang;
+     }
+   }
+ }
+ if(!Object.values(c).some(v=>v>0)){box(houseGroup,0,.12,0,2.5,.24,2,dark)}
+ box(houseGroup,0,-.12,0,8,.18,6,mat(0x676e70));
+ houseGroup.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
+ houseGroup.scale.setScalar(1);houseGroup.userData.hitPulse=1;
+}
+
+function revealFinalScore(target){
+ const el=$('finalScore');const start=performance.now();const duration=1350;el.textContent='SCORE 00000';
+ function step(now){if(!$('result')||$('result').classList.contains('hidden'))return;const t=Math.min(1,(now-start)/duration),e=1-Math.pow(1-t,4),value=Math.round(target*e);el.textContent='SCORE '+String(value).padStart(5,'0');if(t<1)requestAnimationFrame(step);else el.textContent='SCORE '+String(target).padStart(5,'0');}
+ requestAnimationFrame(step);
+}
+function playResultConfetti(){
+ const host=$('result');host.querySelectorAll('.result-confetti').forEach(e=>e.remove());
+ const colors=['#ffd166','#ef476f','#06d6a0','#4cc9f0','#ffffff','#ff9f1c'];
+ for(let i=0;i<30;i++){const bit=document.createElement('i');bit.className='result-confetti';bit.style.left=(Math.random()*100)+'%';bit.style.background=colors[i%colors.length];bit.style.setProperty('--dur',(1.65+Math.random()*1.4)+'s');bit.style.setProperty('--drift',((Math.random()-.5)*180)+'px');bit.style.setProperty('--rot',(Math.random()*180)+'deg');bit.style.animationDelay=(Math.random()*.42)+'s';host.appendChild(bit);setTimeout(()=>bit.remove(),3600);}
+}
+const RECORD_KEY='kenchikuManiaReal3D.records.v1';
+function readRecords(){try{const raw=localStorage.getItem(RECORD_KEY);const data=raw?JSON.parse(raw):[];return Array.isArray(data)?data.filter(x=>x&&Number.isFinite(Number(x.score))).map(x=>({score:Math.max(0,Math.floor(Number(x.score))),date:String(x.date||''),accuracy:Math.max(0,Math.min(100,Math.floor(Number(x.accuracy)||0))),buildPct:Math.max(0,Math.min(100,Math.floor(Number(x.buildPct)||0)))})).sort((a,b)=>b.score-a.score).slice(0,10):[]}catch(e){return []}}
+function writeRecord(entry){const records=readRecords();records.push(entry);records.sort((a,b)=>b.score-a.score);const top=records.slice(0,10);try{localStorage.setItem(RECORD_KEY,JSON.stringify(top));return {records:top,saved:true}}catch(e){return {records:top,saved:false}}}
+function renderRecords(targetId,latestScore=null){const host=$(targetId);if(!host)return;const records=readRecords();const best=records.length?records[0].score:0;const rows=records.length?`<table class="record-table"><thead><tr><th>順位</th><th>スコア</th><th>日付</th></tr></thead><tbody>${records.map((r,i)=>`<tr${latestScore!==null&&i===records.findIndex(x=>x.score===latestScore&&x.date===records.find(y=>y.score===latestScore)?.date)?' class="record-current"':''}><td>${i===0?'🏆':String(i+1).padStart(2,'0')}</td><td>${String(r.score).padStart(5,'0')}点</td><td>${r.date||'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="record-empty">まだ記録はありません。最初のプレイでランキングを作ろう！</div>';host.innerHTML=`<div class="record-head"><strong>🏆 ハイスコアランキング TOP 10</strong><span class="record-best">最高得点 <b>${String(best).padStart(5,'0')}</b></span></div>${rows}<p class="record-note">プレイヤー名なし・この端末／ブラウザに記録します。</p>`;}
+function saveFinishedScore(scoreNow,accuracy,buildPct){const before=readRecords();const previousBest=before.length?before[0].score:0;const date=new Date();const entry={score:Math.max(0,Math.floor(scoreNow)),accuracy,buildPct,date:(date.getMonth()+1)+'/'+date.getDate()};const ordered=[...before,entry].sort((a,b)=>b.score-a.score);const rank=ordered.indexOf(entry)+1;const result=writeRecord(entry);renderRecords('startRecords');renderRecords('resultRecords',entry.score);return {...result,rank:rank<=10?rank:0,newBest:entry.score>previousBest,score:entry.score};}
+function finish(){clearTimeout(window.__houseBuildTimer);mode='result';mainBuildFx.forEach(f=>{scene.remove(f.mesh);if(f.mesh.geometry)f.mesh.geometry.dispose();if(f.mesh.material)f.mesh.material.dispose()});mainBuildFx=[];previewReveal=1;updateSiteStage(3);clearTargets();refreshHousePreview();if(houseGroup){scene.remove(houseGroup);disposeTree(houseGroup);houseGroup=null}const view=$('finalHouseView');if(previewRenderer&&previewRenderer.domElement.parentElement!==view){view.innerHTML='';view.appendChild(previewRenderer.domElement);}previewCamera.position.set(8.2,6.5,9.4);previewCamera.lookAt(0,2.35,0);previewCamera.updateProjectionMatrix();let n=Object.values(counts).reduce((a,b)=>a+b,0),scoreNow=score;
+// v20: grade the actual mix of building parts, not just the total number collected.
+const requirements={foundation:6,column:6,beam:5,wall:9,window:4,door:1,roof:7};
+const weights={foundation:1.2,column:1.1,beam:1.0,wall:1.35,window:.7,door:.55,roof:1.1};
+let earned=0,possible=0;for(const [id,need] of Object.entries(requirements)){possible+=weights[id];earned+=Math.min((counts[id]||0)/need,1)*weights[id];}
+const buildPct=Math.round(earned/possible*100);resultBuildPct=buildPct;resultCameraBlend=0;resultCamStart=previewCamera.position.clone();resultTilt=0;resultZoom=1;resultManualUntil=0;
+const title=buildPct>=98?'👑 神話級！建築界のレジェンド':buildPct>=92?'🏆 伝説の現場監督！':buildPct>=86?'🏡 完成住宅のマスター！':buildPct>=78?'🏠 一流の建築士！':buildPct>=70?'🧱 腕利きの棟梁！':buildPct>=62?'🔨 熟練の建築職人！':buildPct>=54?'📐 頼れる現場リーダー！':buildPct>=46?'🛠️ 建築見習いマスター！':buildPct>=38?'🪟 成長中の住宅職人！':buildPct>=30?'🪚 期待の新人職人！':buildPct>=22?'🏚️ 個性派の住宅職人！':buildPct>=14?'🧰 建築チャレンジャー！':buildPct>=6?'🦺 見習いスタッフ！':'これは家なのか!?';
+$('resultTitle').textContent=title;
+const buildMessage=buildPct>=88?'主要部材のバランスが良く、基礎から屋根まで整った住宅になりました！':buildPct>=68?'かなり住宅らしい形です。少し足りない部材を補えば完成度がさらに上がります。':buildPct>=42?'家の形が見えてきましたが、部材が足りない部分が残っています。':buildPct>=20?'部材の不足や偏りが目立つ、個性的な住宅になりました。':'集めた部材が少なく、住宅はまだ建築途中です。';$('resultText').textContent=(scoreNow>=10000?'🎯 10,000点チャレンジ達成！　':'')+buildMessage;
+$('qualityValue').textContent=buildPct+'%';$('qualityFill').style.width=buildPct+'%';
+const weakest=Object.entries(requirements).map(([id,need])=>({id,need,count:counts[id]||0,label:(TYPES.find(t=>t.id===id)||{name:id}).name})).filter(x=>x.count<x.need).sort((a,b)=>(a.count/a.need)-(b.count/b.need)).slice(0,3);
+$('qualityDetail').textContent=buildPct>=88?'構造・外壁・開口部・屋根のバランスが良好です。':('次に集めたい部材：'+(weakest.length?weakest.map(x=>x.label+' '+x.count+'/'+x.need).join(' ／ '):'主要部材はそろっています'));
+$('resultParts').innerHTML=TYPES.slice(0,7).map(t=>`<div class="chip">${t.name} <b>×${counts[t.id]||0}</b></div>`).join('');const accuracy=shots?Math.round(hitCount/shots*100):0;const recordResult=saveFinishedScore(scoreNow,accuracy,buildPct);const recordStatus=$('recordStatus');if(recordResult.saved){recordStatus.innerHTML=(recordResult.newBest?'🎉 <strong>新・最高得点！</strong> ':'今回の記録：')+(recordResult.rank>0?'ランキング <strong>'+recordResult.rank+'位</strong>':'ランキング圏外（TOP10）')+'<small>この端末のブラウザに保存しました。次のプレイヤーも同じランキングに挑戦できます。</small>';}else{recordStatus.innerHTML='今回のスコア：<strong>'+String(scoreNow).padStart(5,'0')+'点</strong><small>ブラウザの保存領域に書き込めませんでした。プライベートブラウズや保存容量を確認してください。</small>';}revealFinalScore(scoreNow);playResultConfetti();const rank=accuracy>=80?'Sランク':accuracy>=60?'Aランク':accuracy>=40?'Bランク':'Cランク';$('resultStats').textContent=rank+'　｜　命中率 '+accuracy+'%　｜　命中 '+hitCount+' / 射撃 '+shots+'　｜　ミス '+missCount+'　｜　最終コンボ '+combo;$('result').classList.remove('hidden');requestAnimationFrame(resize);}
+function pollGamepads(dt){
+ let pads=[];try{pads=navigator.getGamepads?Array.from(navigator.getGamepads()||[]):[]}catch(_){pads=[]}
+ const active=pads.filter(p=>p&&p.connected);connectedPads=active.length;
+ const status=$('controllerStatus');if(status){status.textContent=connectedPads?`🎮 コントローラー接続中（${connectedPads}台）｜スティック／十字キー：照準`: '🎮 Joy-Con／コントローラー接続待ち';status.classList.toggle('connected',connectedPads>0)}
+ if(!active.length){gamepadLast=false;gamepadMenuLast=false;return}
+ // Use the first connected controller with axes; either Joy-Con can provide aim input.
+ let aimPad=active.find(p=>(p.axes||[]).length>=2)||active[0];let axes=aimPad.axes||[];let x=axes.length?axes[0]||0:0,y=axes.length>1?axes[1]||0:0;
+ const dead=.18;if(Math.abs(x)<dead)x=0;else x=Math.sign(x)*(Math.abs(x)-dead)/(1-dead);if(Math.abs(y)<dead)y=0;else y=Math.sign(y)*(Math.abs(y)-dead)/(1-dead);
+ // D-pad works as an alternative for controllers whose stick axes are not exposed by Safari.
+ for(const p of active){const b=p.buttons||[];if(!x){if(b[15]?.pressed)x=1;else if(b[14]?.pressed)x=-1}if(!y){if(b[13]?.pressed)y=1;else if(b[12]?.pressed)y=-1}}
+ if(x||y){const speed=Math.max(innerWidth,innerHeight)*1.05*dt;let cx=parseFloat($('crosshair').style.left);let cy=parseFloat($('crosshair').style.top);if(!Number.isFinite(cx)||cx<1)cx=innerWidth/2;if(!Number.isFinite(cy)||cy<1)cy=innerHeight*.52;cx=Math.max(28,Math.min(innerWidth-28,cx+x*speed));cy=Math.max(28,Math.min(innerHeight-28,cy+y*speed));$('crosshair').style.left=cx+'px';$('crosshair').style.top=cy+'px'}
+ // Joy-Con button mappings differ between browsers. Accept common face/shoulder/trigger buttons.
+ const fire=active.some(p=>(p.buttons||[]).some((b,i)=>b&&b.pressed&&[0,1,2,3,4,5,6,7].includes(i)));const menu=active.some(p=>(p.buttons||[]).some((b,i)=>b&&b.pressed&&[0,1,2,3,8,9,10,11].includes(i)));
+ if(mode==='ready'||mode==='result'){
+   if(menu&&!gamepadMenuLast){if(mode==='ready')startGame();else startGame();gamepadLast=fire;}
+   gamepadMenuLast=menu;gamepadLast=fire;return;
+ }
+ if(mode==='playing'&&fire&&!gamepadLast){const cx=parseFloat($('crosshair').style.left),cy=parseFloat($('crosshair').style.top);shoot(Number.isFinite(cx)?cx:innerWidth/2,Number.isFinite(cy)?cy:innerHeight*.52)}
+ gamepadLast=fire;gamepadMenuLast=menu;
+}
+function animate(){raf=requestAnimationFrame(animate);let dt=Math.min(clock?clock.getDelta():.016,.05),now=performance.now()/1000;pollGamepads(dt);if(mode==='playing'){time=Math.max(0,40-(now-gameStart));$('time').textContent=Math.ceil(time);stageNow=time>27?1:time>13?2:3;updateSiteStage(stageNow);if(stageNow!==lastStageAnnounced){lastStageAnnounced=stageNow;if(stageNow===2)showStageBanner('STAGE 2｜躯体・外壁工事','足場が増加！的のスピードが上昇！');else showStageBanner('STAGE 3｜仕上げ工事','最終ラウンド！素早く部材を集めよう！');} $('stageLabel').textContent=stageNow===1?'STAGE 1｜基礎工事':stageNow===2?'STAGE 2｜躯体・外壁工事':'STAGE 3｜仕上げ・完成';spawnGap=Math.max(.16,(stageNow===1?.62:stageNow===2?.43:.29));lastSpawn+=dt;if(lastSpawn>spawnGap&&targets.length<(stageNow===1?9:stageNow===2?11:13)){lastSpawn=0;let type=chooseTargetType();makeTarget(type);if(Math.random()<(stageNow===1?.14:stageNow===2?.22:.30))makeTarget(TYPES[7])}targets.forEach(t=>{t.userData.age+=dt;const age=t.userData.age,spd=(stageNow===1?2.75:stageNow===2?3.35:4.0)+Math.min(.65,(40-time)*.018);t.position.z+=dt*spd;t.position.x=t.userData.baseX+Math.sin(age*t.userData.moveRate+t.userData.movePhase)*t.userData.moveAmp*(stageNow===3?1.06:1);t.position.y=t.userData.baseY+Math.sin(age*2.1+t.userData.movePhase)*.28;t.rotation.y+=dt*(.35+t.userData.spin);t.rotation.z=Math.sin(age*1.5+t.userData.movePhase)*.12;t.userData.ring.rotation.z+=dt*1.2;if(t.userData.innerRing){t.userData.innerRing.rotation.z-=dt*1.7;t.userData.innerRing.scale.setScalar(1+.08*Math.sin(age*4.5));}let pulse=1+.055*Math.sin(age*5);t.scale.setScalar(t.userData.baseScale*pulse);if(t.position.z>9){scene.remove(t);disposeTree(t);targets=targets.filter(a=>a!==t);missCount++;combo=0;score=Math.max(0,score-40);$('miss').textContent=missCount;updateHUD();$('partName').textContent='的を逃した！ −40';}});if(time<=0)finish();
+}
+// v26: living construction-site animation — gently slewing crane, connected swinging load,
+// fluttering finishing-stage bunting and pulsing work lights.
+if(siteHoist&&siteStage2&&siteStage2.visible){siteHoist.rotation.y=Math.sin(previewClock*.32)*.025;if(siteCargo&&siteCable){const t=previewClock;siteCargo.position.x=-3.5+Math.sin(t*1.15)*.32;siteCargo.position.y=5.55+Math.sin(t*1.65)*.13;const a=new THREE.Vector3(-3.5,11.4,0),b=new THREE.Vector3(siteCargo.position.x,siteCargo.position.y+.34,0),d=new THREE.Vector3().subVectors(b,a),len=d.length();siteCable.position.copy(a).add(b).multiplyScalar(.5);siteCable.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.clone().normalize());siteCable.scale.y=len/siteCableBaseLength;}}
+if(siteFlags.length){for(let i=0;i<siteFlags.length;i++){const f=siteFlags[i];f.rotation.x=Math.sin(previewClock*2.1+i*.7)*.10;f.rotation.z=Math.PI+Math.sin(previewClock*1.7+i*.55)*.08;}}
+if(siteHitPulse>0)siteHitPulse=Math.max(0,siteHitPulse-dt*2.7);if(siteKeyLight&&siteRimLight){const cinematic=.5+.5*Math.sin(previewClock*1.15);siteKeyLight.intensity=(stageNow===3?1.02:stageNow===2?.82:.72)+cinematic*.055;siteRimLight.intensity=(stageNow===3?.82:.58)+(.5-.5*Math.cos(previewClock*.9))*.045;}if(siteAccentLights.length){const ambient=.82+.18*(.5+.5*Math.sin(previewClock*3.2));const impact=1+siteHitPulse*1.7;siteAccentLights.forEach((l,i)=>{l.intensity=(i%2?16:1.45)*ambient*impact;});}
+particles.forEach(p=>{p.life-=dt;p.obj.position.addScaledVector(p.v,dt);p.v.y-=5*dt;p.obj.scale.setScalar(Math.max(.01,p.life*2))});particles=particles.filter(p=>{if(p.life<=0){scene.remove(p.obj);if(p.obj.geometry)p.obj.geometry.dispose();if(p.obj.material)p.obj.material.dispose();return false}return true});mainBuildFx=mainBuildFx.filter(f=>{f.age+=dt;const u=Math.min(1,f.age/f.duration),eased=1-Math.pow(1-u,4);f.mesh.position.lerpVectors(f.start,f.target,eased);if(f.ring){f.mesh.rotation.z+=dt*3.8;f.mesh.material.opacity=.9*(1-u);f.mesh.scale.setScalar(1+u*2.8)}else{f.mesh.position.y+=Math.sin(Math.PI*u)*(f.arcHeight||.5);f.mesh.rotation.x+=dt*(6+u*8);f.mesh.rotation.y+=dt*(8+u*10);f.mesh.material.emissiveIntensity=1.5+Math.sin(Math.PI*u)*2.1;f.mesh.material.opacity=u>.82?Math.max(0,1-(u-.82)/.18):1;f.mesh.scale.setScalar(u>.88?Math.max(.01,1-(u-.88)*8):1+.14*Math.sin(Math.PI*u))}if(u>=1){scene.remove(f.mesh);f.mesh.geometry.dispose();f.mesh.material.dispose();return false}return true});if(houseGroup){if(houseGroup.userData.hitPulse>0){houseGroup.userData.hitPulse=Math.max(0,houseGroup.userData.hitPulse-dt*2.6);const pulse=1+.035*Math.sin((1-houseGroup.userData.hitPulse)*Math.PI)*houseGroup.userData.hitPulse;houseGroup.scale.setScalar(pulse)}else houseGroup.scale.setScalar(1);houseGroup.rotation.y+=dt*.035}if(renderer&&scene)renderer.render(scene,camera);if(previewRenderer&&previewScene&&mode!=='playing'){previewClock+=dt;buildFx=buildFx.filter(f=>{f.age+=dt;let u=Math.min(1,f.age/f.duration);const eased=1-Math.pow(1-u,3);f.mesh.position.lerpVectors(f.start,f.target,eased);if(!f.isRing){f.mesh.position.y+=Math.sin(Math.PI*u)*(f.arcHeight||.45);f.mesh.rotation.x+=dt*(5+u*9);f.mesh.rotation.y+=dt*(7+u*12);f.mesh.rotation.z+=dt*4;f.mesh.material.emissiveIntensity=1.35+Math.sin(u*Math.PI)*1.8;}else{f.mesh.rotation.z+=dt*2.8;f.mesh.material.opacity=.85*(1-u);f.mesh.scale.setScalar(Math.max(.01,1+u*2.6));}if(!f.isRing){f.mesh.material.opacity=u>.78?Math.max(0,1-(u-.78)/.22):1;f.mesh.scale.setScalar(u>.82?Math.max(.01,1-(u-.82)*2.4):1+.12*Math.sin(u*Math.PI));}f.mesh.material.transparent=true;if(u>=1){previewScene.remove(f.mesh);f.mesh.geometry.dispose();f.mesh.material.dispose();return false}return true});if(previewHouse){if(previewPulse>0){previewPulse=Math.max(0,previewPulse-dt*2.8);let k=1+.12*Math.sin((1-previewPulse)*Math.PI)*previewPulse;previewHouse.scale.setScalar(Math.max(.9,k));}else previewHouse.scale.setScalar(1);if(mode==='result'){const manual=performance.now()<resultManualUntil;if(!manual&&!resultDrag)previewHouse.rotation.y+=dt*.24;resultCameraBlend=Math.min(1,resultCameraBlend+dt*1.05);const lookY=1.15+resultBuildPct*.017;const radius=(7.2+resultBuildPct*.035)*resultZoom;const orbit=new THREE.Vector3(radius*.72+Math.sin(previewClock*.18)*.35,lookY+3.9+resultTilt,radius*.92+Math.cos(previewClock*.18)*.35);if(resultCamStart&&!manual)previewCamera.position.copy(resultCamStart).lerp(orbit,resultCameraBlend);else previewCamera.position.copy(orbit);previewCamera.lookAt(0,lookY,0)}else if(mode!=='playing')previewHouse.rotation.y+=dt*.12;}previewRenderer.render(previewScene,previewCamera)}}
+renderRecords('startRecords');renderRecords('resultRecords');try{init()}catch(e){console.error(e);$('start').querySelector('p').textContent='3Dシーンの初期化に失敗しました。最新のSafari/Chromeで開いてください。'}
+})();
+</script></body></html>
