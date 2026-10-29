@@ -1,11 +1,11 @@
-# 建築マニア！REAL 3D v41
+# 建築マニア！REAL 3D v42
 
 ## GitHub Pagesで公開
 1. このフォルダ内の `index.html` と `README.md` をGitHubリポジトリのルートへアップロードします。
 2. GitHubの **Settings → Pages** を開きます。
 3. **Deploy from a branch**、`main`、`/(root)` を選んで保存します。
 
-## v41の動作安定化
+## v42の動作安定化
 - iPadなどモバイル端末の描画解像度を抑えてGPU負荷を軽減
 - 影マップを小さくして描画負荷を軽減
 - ゲーム中は非表示の住宅プレビューを描画しない
